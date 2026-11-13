@@ -1,6 +1,6 @@
 /* =====================================================================
    store.js — constants, messages, validation, CSV, storage, login
-   NUVI Social Media Advertisement Distribution Manager (v0.3)
+   NUVI Social Media Advertisement Distribution Manager (v0.4)
 
    Works in two modes:
      • Chrome extension  -> chrome.storage.local
@@ -34,7 +34,7 @@ const STATUS = {
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
                  csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6 };
 
@@ -77,11 +77,14 @@ const MESSAGES = {
   'E-BAK-03': 'Stop the running distribution before restoring a backup.',
   'E-PRF-01': 'This profile has groups, advertisements or campaigns, so it cannot be deleted.',
   'E-PRF-02': 'At least one profile is needed.',
-  'E-AUTH-01': 'Wrong username or password.',
+  'E-AUTH-01': 'Wrong email or password.',
   'E-AUTH-02': 'Password must be at least {max} characters.',
   'E-AUTH-03': 'Passwords do not match.',
-  'E-AUTH-04': 'This username is already taken.',
-  'E-AUTH-05': 'You cannot remove the user you are signed in as.',
+  'E-AUTH-06': 'This email is not confirmed yet. Confirm the user in Supabase → Authentication → Users.',
+  'E-AUTH-07': 'The new password must be different from the current one.',
+  'E-AUTH-08': 'Enter your email and password.',
+  'E-NET-01': 'Cannot reach the server. Check your internet connection and try again.',
+  'E-NET-02': 'The app is not connected to Supabase. Check js/config.js.',
   'E-SYS-01': 'Something went wrong. Please try again.',
   'E-SAVE-01': 'Could not save. Please try again.',
   'W-CAT-01': 'Unknown category "{value}", saved as Other.',
@@ -444,56 +447,70 @@ const Store = {
   }
 };
 
-/* ---------- Login (local only) ----------
-   Accounts live in this browser (Store.db.users). Passwords are stored as a
-   salted SHA-256 hash, never as plain text. The signed-in user is kept in
-   sessionStorage, so closing the browser tab signs out.                  */
+/* ---------- Login (Supabase Auth) ----------
+   Users are added in the Supabase dashboard (Authentication → Users);
+   public sign-ups are turned off. The session is kept in
+   chrome.storage.local by js/db.js, so it survives a Chrome restart.
+   Auth.current() is synchronous: it returns the cached user or null.   */
 const Auth = {
-  KEY: 'nuvi-auth-user',
-  async hash(password, salt) {
-    const bytes = new TextEncoder().encode(salt + ':' + password);
-    const buf = await crypto.subtle.digest('SHA-256', bytes);
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  user: null,
+  _toUser(u) {
+    if (!u) return null;
+    const meta = u.user_metadata || {};
+    const email = u.email || '';
+    return { id: u.id, email, name: meta.name || meta.full_name || email.split('@')[0] || 'User' };
   },
-  hasUsers() { return Object.keys(Store.db.users).length > 0; },
-  current() {
-    let u = null;
-    try { u = sessionStorage.getItem(this.KEY); } catch { /* ignore */ }
-    return u && Store.db.users[u] ? Store.db.users[u] : null;
+  async init(onChange) {
+    if (!DB.client) return;
+    const { data } = await DB.client.auth.getSession();
+    this.user = this._toUser(data.session && data.session.user);
+    DB.client.auth.onAuthStateChange((event, session) => {
+      const before = this.user && this.user.id;
+      this.user = this._toUser(session && session.user);
+      if ((this.user && this.user.id) !== before && onChange) onChange(event);
+    });
+    // Local accounts from the prototype are no longer used: remove their hashes.
+    if (Store.db.users && Object.keys(Store.db.users).length) { Store.db.users = {}; await Store.save(); }
   },
-  async createUser({ name, username, password, confirm }) {
-    username = (username || '').trim().toLowerCase();
-    if (!name || !name.trim() || !username) throw new AppError('E-REQ-01');
-    if (Store.db.users[username]) throw new AppError('E-AUTH-04');
-    if ((password || '').length < LIMITS.password) throw new AppError('E-AUTH-02', { max: LIMITS.password });
-    if (password !== confirm) throw new AppError('E-AUTH-03');
-    const salt = crypto.getRandomValues(new Uint32Array(4)).join('-');
-    Store.db.users[username] = { username, name: name.trim(), salt, hash: await this.hash(password, salt), createdAt: new Date().toISOString() };
-    await Store.save();
-    return Store.db.users[username];
+  current() { return this.user; },
+  _fail(error) {
+    const m = (error && error.message || '').toLowerCase();
+    if (m.includes('invalid login') || m.includes('invalid credentials')) throw new AppError('E-AUTH-01');
+    if (m.includes('email not confirmed')) throw new AppError('E-AUTH-06');
+    if (m.includes('fetch') || m.includes('network')) throw new AppError('E-NET-01');
+    throw new AppError('E-SYS-01');
   },
-  async login(username, password) {
-    const u = Store.db.users[(username || '').trim().toLowerCase()];
-    if (!u || u.hash !== await this.hash(password || '', u.salt)) throw new AppError('E-AUTH-01');
-    u.lastLoginAt = new Date().toISOString();
-    await Store.save();
-    try { sessionStorage.setItem(this.KEY, u.username); } catch { /* ignore */ }
-    return u;
+  async login(email, password) {
+    if (!DB.client) throw new AppError('E-NET-02');
+    email = (email || '').trim().toLowerCase();
+    if (!email || !password) throw new AppError('E-AUTH-08');
+    const { data, error } = await DB.client.auth.signInWithPassword({ email, password });
+    if (error) this._fail(error);
+    this.user = this._toUser(data.user);
+    return this.user;
   },
-  logout() { try { sessionStorage.removeItem(this.KEY); } catch { /* ignore */ } },
-  async changePassword(username, current, next, confirm) {
-    const u = Store.db.users[username];
-    if (u.hash !== await this.hash(current || '', u.salt)) throw new AppError('E-AUTH-01');
+  async logout() {
+    if (DB.client) await DB.client.auth.signOut({ scope: 'local' });
+    this.user = null;
+  },
+  async changePassword(current, next, confirm) {
     if ((next || '').length < LIMITS.password) throw new AppError('E-AUTH-02', { max: LIMITS.password });
     if (next !== confirm) throw new AppError('E-AUTH-03');
-    u.hash = await this.hash(next, u.salt);
-    await Store.save();
+    // Check the current password first.
+    const check = await DB.client.auth.signInWithPassword({ email: this.user.email, password: current || '' });
+    if (check.error) this._fail(check.error);
+    const { error } = await DB.client.auth.updateUser({ password: next });
+    if (error) {
+      if ((error.message || '').toLowerCase().includes('different')) throw new AppError('E-AUTH-07');
+      this._fail(error);
+    }
   },
-  async removeUser(username) {
-    const me = this.current();
-    if (me && me.username === username) throw new AppError('E-AUTH-05');
-    delete Store.db.users[username];
-    await Store.save();
+  async updateName(name) {
+    name = (name || '').trim();
+    if (!name) throw new AppError('E-REQ-01');
+    const { data, error } = await DB.client.auth.updateUser({ data: { name } });
+    if (error) this._fail(error);
+    this.user = this._toUser(data.user);
   }
 };
 

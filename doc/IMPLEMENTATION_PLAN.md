@@ -13,10 +13,10 @@
 |---|---|---|
 | 0 | Install the tools | ✅ Done |
 | 1 | Project folder + GitHub | ✅ Done |
-| 2 | Create the Supabase project | 🟡 1 check left (turn off sign-ups) |
+| 2 | Create the Supabase project | ✅ Done |
 | 3 | Create the database tables | ✅ Done |
-| 4 | Extension skeleton (connect to Supabase) | 🟡 Built — you load it in Chrome |
-| 5 | Login screen | ⬜ Not started |
+| 4 | Extension skeleton (connect to Supabase) | ✅ Done |
+| 5 | Login screen | 🟡 Built — you test it |
 | 6 | Profiles | ⬜ Not started |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
@@ -97,7 +97,7 @@ for the screens.
   > ✅ URL: `https://yuwvfgnytetrzfqjqdjx.supabase.co` · Key: the new-style **publishable key** (`sb_publishable_…`) = the anon key.
   > The anon key is safe to use inside the extension. **Never** use the `service_role` key in the extension.
 - [x] Go to **Authentication → Users → Add user** and create your own login (email + password).
-- [ ] Go to **Authentication → Sign In / Providers** and turn **OFF** "Allow new users to sign up".
+- [x] Go to **Authentication → Sign In / Providers** and turn **OFF** "Allow new users to sign up".
   Only people you add can then log in.
 
 **Done when:** you have the URL + anon key, and your user appears in the Users list.
@@ -127,7 +127,7 @@ for the screens.
   > ✅ supabase-js **2.118.0** (UMD build) bundled.
 - [x] Create `client/js/config.js` containing your Project URL and anon key.
 - [x] Update `manifest.json`: allow `https://YOUR-PROJECT.supabase.co/*`.
-- [ ] Load it in Chrome: `chrome://extensions` → Developer mode → **Load unpacked** → choose `client/`.
+- [x] Load it in Chrome: `chrome://extensions` → Developer mode → **Load unpacked** → choose `client/`.
 
 **Done when:** the extension opens and the browser console shows "Connected to Supabase".
 
@@ -137,10 +137,11 @@ for the screens.
 
 **Who:** Claude · **Time:** 30 min
 
-- [ ] Replace the local login with **Supabase Auth** (email + password).
-- [ ] Stay logged in after Chrome restarts (session saved in `chrome.storage`).
-- [ ] Log out button.
-- [ ] Remove the prototype's local "Users" screen. Users are managed in the Supabase dashboard.
+- [x] Replace the local login with **Supabase Auth** (email + password).
+- [x] Stay logged in after Chrome restarts (session saved in `chrome.storage`).
+- [x] Log out button.
+- [x] Remove the prototype's local "Users" screen. Users are managed in the Supabase dashboard.
+  > ✅ Replaced by **Settings → My account** (change name, change password).
 
 **Done when:** you log in with the user from Step 2, close Chrome, reopen it, and are still logged in.
 
@@ -411,3 +412,6 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 2 | Login user created in Supabase Auth. Check of `/auth/v1/settings` shows sign-ups still ON (`disable_signup: false`) |
 | 14/11/2026 | 3 | `schema.sql` run in SQL Editor; 6 tables created; profiles NUVI Engineering (ENG) + NUVI IT (IT) confirmed |
 | 14/11/2026 | 4 | `client/` built: prototype screens + supabase-js 2.118.0 + `js/db.js` + git-ignored `config.js` + host permission. Headless test logs "Connected to Supabase" |
+| 14/11/2026 | 2 | Sign-ups confirmed OFF (`disable_signup: true`) |
+| 14/11/2026 | 4 | Loaded unpacked in Chrome by owner; app opens |
+| 14/11/2026 | 5 | Supabase Auth login (email + password), session in `chrome.storage.local`, log out, Settings → My account; local Users screen and old local password hashes removed. Headless test: wrong password shows "Wrong email or password." |

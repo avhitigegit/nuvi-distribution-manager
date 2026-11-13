@@ -1,8 +1,8 @@
-# Frontend — Chrome extension (v0.3)
+# Frontend — Chrome extension (v0.4)
 
 The real app, built step by step from `../doc/IMPLEMENTATION_PLAN.md`.
 Started in Step 4 as a copy of `../prototype` plus a Supabase connection.
-Screens still use local storage; Steps 5–11 move them to Supabase.
+Login uses Supabase Auth (Step 5). The other screens still use local storage; Steps 6–11 move them to Supabase.
 
 ## First-time setup
 1. Copy `js/config.example.js` to `js/config.js` and fill in the Supabase

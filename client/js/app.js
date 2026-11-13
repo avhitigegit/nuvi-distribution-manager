@@ -116,32 +116,32 @@ function makeField(state, key, label, input, { hint, touched, errEls } = {}) {
    Login screen
    ===================================================================== */
 function viewLogin() {
-  const firstRun = !Auth.hasUsers();
-  const v = { name: '', username: '', password: '', confirm: '' };
-  const err = h('div', { class: 'err center' });
+  const v = { email: '', password: '' };
+  const err = h('div', { class: 'err center' }, DB.client ? '' : msg('E-NET-02'));
+  const btn = h('button', { class: 'btn primary block big', type: 'submit' }, 'Sign in');
   const inp = (key, attrs) => h('input', { ...attrs, oninput: e => { v[key] = e.target.value; err.textContent = ''; } });
 
   const submit = async e => {
     e.preventDefault();
+    btn.disabled = true; btn.textContent = 'Signing in…';
     try {
-      if (firstRun) { await Auth.createUser(v); toast('Account created.'); }
-      await Auth.login(v.username, v.password);
+      await Auth.login(v.email, v.password);
       S.view = 'dashboard'; render();
-    } catch (ex) { err.textContent = ex instanceof AppError ? ex.message : msg('E-SYS-01'); }
+    } catch (ex) {
+      err.textContent = ex instanceof AppError ? ex.message : msg('E-SYS-01');
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
   };
 
   return h('div', { class: 'login-page' },
     h('form', { class: 'login-card', onsubmit: submit },
       h('div', { class: 'login-logo' }, 'N'),
       h('h1', {}, 'NUVI Distribution Manager'),
-      h('p', { class: 'muted center' }, firstRun ? 'Create the first account to start.' : 'Sign in to continue.'),
-      firstRun ? h('label', { class: 'field' }, h('span', {}, 'Your name'), inp('name', { autocomplete: 'name', placeholder: 'e.g. Amritha', autofocus: true })) : null,
-      h('label', { class: 'field' }, h('span', {}, 'Username'), inp('username', { autocomplete: 'username', autofocus: !firstRun })),
-      h('label', { class: 'field' }, h('span', {}, 'Password'), inp('password', { type: 'password', autocomplete: firstRun ? 'new-password' : 'current-password' })),
-      firstRun ? h('label', { class: 'field' }, h('span', {}, 'Confirm password'), inp('confirm', { type: 'password', autocomplete: 'new-password' })) : null,
-      err,
-      h('button', { class: 'btn primary block big', type: 'submit' }, firstRun ? 'Create account & sign in' : 'Sign in'),
-      h('p', { class: 'muted small center' }, 'Accounts are stored only in this browser. Forgot your password? Another user can reset it from Settings → Users.')));
+      h('p', { class: 'muted center' }, 'Sign in with your NUVI account.'),
+      h('label', { class: 'field' }, h('span', {}, 'Email'), inp('email', { type: 'email', autocomplete: 'username', autofocus: true })),
+      h('label', { class: 'field' }, h('span', {}, 'Password'), inp('password', { type: 'password', autocomplete: 'current-password' })),
+      err, btn,
+      h('p', { class: 'muted small center' }, 'Accounts are added by the owner in the Supabase dashboard. Forgot your password? The owner can reset it there.')));
 }
 
 /* =====================================================================
@@ -175,8 +175,9 @@ function sidebar() {
 
     h('div', { class: 'side-foot' },
       h('div', { class: 'avatar' }, (me.name || '?').slice(0, 1).toUpperCase()),
-      h('div', { class: 'grow' }, h('div', { class: 'b' }, me.name), h('div', { class: 'side-sub' }, '@' + me.username)),
-      h('button', { class: 'btn sm ghost-light', onclick: () => { Auth.logout(); render(); } }, 'Log out')));
+      h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'b' }, me.name),
+        h('div', { class: 'side-sub', style: 'overflow:hidden;text-overflow:ellipsis', title: me.email }, me.email)),
+      h('button', { class: 'btn sm ghost-light', onclick: () => act(async () => { await Auth.logout(); render(); }) }, 'Log out')));
 }
 
 function topbar() {
@@ -719,8 +720,8 @@ function viewCampaign() {
    ===================================================================== */
 function viewSettings() {
   const tab = S.params.tab || 'profiles';
-  const tabs = [['profiles', 'Profiles'], ['users', 'Users'], ['lists', 'Lists & posting gap'], ['backup', 'Backup & data']];
-  const body = { profiles: settingsProfiles, users: settingsUsers, lists: settingsLists, backup: settingsBackup }[tab]();
+  const tabs = [['profiles', 'Profiles'], ['account', 'My account'], ['lists', 'Lists & posting gap'], ['backup', 'Backup & data']];
+  const body = { profiles: settingsProfiles, account: settingsAccount, lists: settingsLists, backup: settingsBackup }[tab]();
   return h('div', {},
     pageTitle('Settings', 'Applies to all profiles'),
     h('div', { class: 'seg' }, tabs.map(([k, t]) => h('button', { class: 'seg-btn' + (k === tab ? ' on' : ''), onclick: () => go('settings', { tab: k }) }, t))),
@@ -791,26 +792,17 @@ function profileForm(p) {
   state.check();
 }
 
-/* --- Users (local login accounts) --- */
-function settingsUsers() {
+/* --- My account (Supabase Auth) --- */
+function settingsAccount() {
   const me = Auth.current();
-  const users = Object.values(Store.db.users).sort((a, b) => a.name.localeCompare(b.name));
   return card(
-    h('div', { class: 'row between mb' }, h('div', {}, h('h3', { style: 'margin:0' }, 'Users'),
-      h('div', { class: 'muted small' }, 'Login accounts for this browser. Passwords are stored as a secure hash.')),
-      h('button', { class: 'btn primary', onclick: userForm }, '+ Add user')),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Username'), h('th', {}, 'Last sign-in'), h('th', {}))),
-      h('tbody', {}, users.map(u => h('tr', {},
-        h('td', { class: 'b' }, u.name, u.username === me.username ? h('span', { class: 'muted small' }, ' (you)') : null),
-        h('td', {}, '@' + u.username), h('td', { class: 'small' }, fmtDateTime(u.lastLoginAt)),
-        h('td', { class: 'right nowrap' },
-          u.username === me.username ? h('button', { class: 'btn sm', onclick: changePasswordForm }, 'Change password')
-            : h('span', {}, h('button', { class: 'btn sm', onclick: () => resetPasswordForm(u) }, 'Reset password'), ' ',
-                h('button', { class: 'btn sm danger-ghost', onclick: async () => {
-                  if (!await confirmBox(`Remove user "${u.name}"?`, 'Remove', true)) return;
-                  act(async () => { await Auth.removeUser(u.username); toast('User removed.'); render(); });
-                } }, 'Remove')))))))));
+    h('div', { class: 'mb' }, h('h3', { style: 'margin:0' }, 'My account'),
+      h('div', { class: 'muted small' }, 'You can sign in with this account on any computer that has the extension installed.')),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' }, h('tbody', {},
+      h('tr', {}, h('td', { class: 'b' }, 'Name'), h('td', {}, me.name), h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: changeNameForm }, 'Change name'))),
+      h('tr', {}, h('td', { class: 'b' }, 'Email'), h('td', {}, me.email), h('td', {})),
+      h('tr', {}, h('td', { class: 'b' }, 'Password'), h('td', {}, '••••••••'), h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: changePasswordForm }, 'Change password')))))),
+    h('p', { class: 'muted small mt' }, 'To add or remove users, or to reset a forgotten password: Supabase dashboard → Authentication → Users.'));
 }
 
 function simpleForm(title, fields, onSave, saveLabel = 'Save') {
@@ -825,22 +817,13 @@ function simpleForm(title, fields, onSave, saveLabel = 'Save') {
     } }, saveLabel)]);
 }
 
-function userForm() {
-  simpleForm('Add user', [['name', 'Name *'], ['username', 'Username *'], ['password', 'Password * (min 6)', 'password'], ['confirm', 'Confirm password *', 'password']],
-    async v => { await Auth.createUser(v); toast('User added.'); }, 'Add user');
+function changeNameForm() {
+  simpleForm('Change name', [['name', 'Your name']],
+    async v => { await Auth.updateName(v.name); toast('Name updated.'); });
 }
 function changePasswordForm() {
-  const me = Auth.current();
   simpleForm('Change password', [['current', 'Current password', 'password'], ['next', 'New password (min 6)', 'password'], ['confirm', 'Confirm new password', 'password']],
-    async v => { await Auth.changePassword(me.username, v.current, v.next, v.confirm); toast('Password changed.'); });
-}
-function resetPasswordForm(u) {
-  simpleForm(`Reset password · ${u.name}`, [['next', 'New password (min 6)', 'password'], ['confirm', 'Confirm new password', 'password']],
-    async v => {
-      if ((v.next || '').length < LIMITS.password) throw new AppError('E-AUTH-02', { max: LIMITS.password });
-      if (v.next !== v.confirm) throw new AppError('E-AUTH-03');
-      u.hash = await Auth.hash(v.next, u.salt); await Store.save(); toast('Password reset.');
-    });
+    async v => { await Auth.changePassword(v.current, v.next, v.confirm); toast('Password changed.'); });
 }
 
 /* --- Lists & posting gap --- */
@@ -883,7 +866,7 @@ function settingsBackup() {
         h('button', { class: 'btn primary', onclick: doBackup }, '⬇ Back up now'),
         h('button', { class: 'btn', onclick: doRestore }, '⬆ Restore backup'))),
     card(h('h3', {}, 'Danger zone'),
-      h('p', { class: 'muted small' }, 'Reset deletes the groups, advertisements and campaigns of every profile. User accounts are kept.'),
+      h('p', { class: 'muted small' }, 'Reset deletes the groups, advertisements and campaigns of every profile. Your login is not affected.'),
       h('div', { class: 'row gap wrap' },
         h('button', { class: 'btn danger-ghost', onclick: () => resetData(false) }, 'Reset all data'),
         h('button', { class: 'btn', onclick: () => resetData(true) }, 'Reload demo data')),
@@ -921,6 +904,8 @@ async function resetData(withDemo) {
 /* ---------- Boot ---------- */
 (async () => {
   await Store.load();
+  // Re-draw when the user signs in or out (also when a session expires).
+  await Auth.init(() => { if (!document.querySelector('.modal-wrap')) render(); });
   render();
   // Keep the page in sync if data is changed in another tab.
   if (HAS_CHROME_STORAGE) {
