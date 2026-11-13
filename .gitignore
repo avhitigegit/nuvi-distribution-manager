@@ -1,0 +1,20 @@
+# Personal scratch notes
+input
+
+# Secrets / local config (Supabase URL + key go in client/js/config.js — see Step 4)
+.env
+*.local
+client/js/config.js
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Backups downloaded from the app (contain your data)
+nuvi-distribution-backup-*.json
+
+# Logs
+*.log

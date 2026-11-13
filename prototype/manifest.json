@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "NUVI Social Media Distribution Manager (Prototype)",
+  "version": "0.2.0",
+  "description": "Guided Facebook group distribution for NUVI profiles (NUVI Engineering, NUVI IT, ...)",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "unlimitedStorage", "clipboardWrite"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Open NUVI Distribution Manager" }
+}
