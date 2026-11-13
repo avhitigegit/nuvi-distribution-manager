@@ -13,8 +13,8 @@
 |---|---|---|
 | 0 | Install the tools | ⬜ Not started |
 | 1 | Project folder + GitHub | ✅ Done |
-| 2 | Create the Supabase project | ⬜ Not started |
-| 3 | Create the database tables | ⬜ Not started |
+| 2 | Create the Supabase project | 🟡 In progress (2 checks left) |
+| 3 | Create the database tables | 🟡 SQL ready — you run it |
 | 4 | Extension skeleton (connect to Supabase) | ⬜ Not started |
 | 5 | Login screen | ⬜ Not started |
 | 6 | Profiles | ⬜ Not started |
@@ -86,13 +86,15 @@ for the screens.
 
 **Who:** you (Claude guides) · **Time:** 10 min
 
-- [ ] In Supabase, click **New project**.
+- [x] In Supabase, click **New project**.
   - Name: `nuvi-distribution`
   - Region: **Southeast Asia (Singapore)**, the closest to Sri Lanka
+    > ✅ Created as `nuvi-distribution` in **Northeast Asia (Seoul)**. This is fine to keep.
   - Database password: create a strong one and keep it safe
-- [ ] Go to **Project Settings → API** and copy two values:
+- [x] Go to **Project Settings → API** and copy two values:
   - **Project URL** (like `https://abcd.supabase.co`)
   - **anon public key**
+  > ✅ URL: `https://yuwvfgnytetrzfqjqdjx.supabase.co` · Key: the new-style **publishable key** (`sb_publishable_…`) = the anon key.
   > The anon key is safe to use inside the extension. **Never** use the `service_role` key in the extension.
 - [ ] Go to **Authentication → Users → Add user** and create your own login (email + password).
 - [ ] Go to **Authentication → Sign In / Providers** and turn **OFF** "Allow new users to sign up".
@@ -106,7 +108,7 @@ for the screens.
 
 **Who:** Claude writes the SQL, you run it · **Time:** 10 min
 
-- [ ] Claude saves the SQL from **Appendix A** as `server/schema.sql`.
+- [x] Claude saves the SQL from **Appendix A** as `server/schema.sql`.
 - [ ] In Supabase, open **SQL Editor → New query**, paste the file and click **Run**.
 - [ ] Check **Table Editor**. You should see 6 tables: `profiles`, `groups`, `ads`, `campaigns`,
       `campaign_items`, `app_settings`.
@@ -378,11 +380,20 @@ begin
   end loop;
 end $$;
 
+-- Allow logged-in users to use the tables through the Supabase API
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+
 -- Starting data
 insert into profiles (name, short_name, tag, color, ad_types, sort_order) values
   ('NUVI Engineering (Pvt) Ltd', 'NUVI Engineering', 'ENG', '#d97706', '{House,Land,Construction,Property Project,Other}', 1),
   ('NUVI IT (Pvt) Ltd',          'NUVI IT',          'IT',  '#6d28d9', '{Software,Website,Inventory System,Business Software,Other}', 2);
 insert into app_settings (id) values (1);
+
+-- Check: should list 6 tables and 2 profiles
+select table_name from information_schema.tables where table_schema = 'public' order by table_name;
+select id, short_name, tag from profiles order by sort_order;
 ```
 
 ---
@@ -393,3 +404,5 @@ insert into app_settings (id) values (1);
 |---|---|---|
 | 13/11/2026 | — | Plan created |
 | 13/11/2026 | 1 | Git repo set up, `.gitignore` + README added, first commit pushed to private GitHub repo `nuvi-distribution-manager` |
+| 13/11/2026 | 2 | Supabase project `nuvi-distribution` created (Free, Seoul). URL and publishable key received |
+| 13/11/2026 | 3 | `server/schema.sql` written (Appendix A + API grants + check queries) |

@@ -18,3 +18,7 @@ nuvi-distribution-backup-*.json
 
 # Logs
 *.log
+
+# Screenshots in the project root
+/*.png
+/*.PNG
