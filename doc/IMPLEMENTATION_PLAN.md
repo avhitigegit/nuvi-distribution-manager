@@ -12,7 +12,7 @@
 | # | Step | Status |
 |---|---|---|
 | 0 | Install the tools | ⬜ Not started |
-| 1 | Project folder + GitHub | ⬜ Not started |
+| 1 | Project folder + GitHub | ✅ Done |
 | 2 | Create the Supabase project | ⬜ Not started |
 | 3 | Create the database tables | ⬜ Not started |
 | 4 | Extension skeleton (connect to Supabase) | ⬜ Not started |
@@ -62,7 +62,7 @@ for the screens.
 
 **Who:** Claude + you · **Time:** 10 min
 
-- [ ] Use this folder structure (the empty `client/` and `server/` folders already exist):
+- [x] Use this folder structure (the empty `client/` and `server/` folders already exist):
   ```
   Social Media Distribution Manager/
     doc/          ← BRD, Tech Doc, Architecture, this plan
@@ -72,8 +72,11 @@ for the screens.
     .gitignore
     README.md
   ```
-- [ ] `git init`, then make the first commit.
-- [ ] Create a **private** repository on GitHub and push to it.
+- [x] `git init`, then make the first commit.
+- [x] Create a **private** repository on GitHub and push to it.
+
+> ✅ Repo: https://github.com/avhitigegit/nuvi-distribution-manager (private, branch `main`).
+> `.gitignore` keeps out the `input` notes file, backup JSON files and `client/js/config.js` (Supabase keys).
 
 **Done when:** the code is visible in your private GitHub repo.
 
@@ -389,3 +392,4 @@ insert into app_settings (id) values (1);
 | Date | Step | What was done |
 |---|---|---|
 | 13/11/2026 | — | Plan created |
+| 13/11/2026 | 1 | Git repo set up, `.gitignore` + README added, first commit pushed to private GitHub repo `nuvi-distribution-manager` |
