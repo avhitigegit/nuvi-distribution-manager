@@ -11,10 +11,10 @@
 
 | # | Step | Status |
 |---|---|---|
-| 0 | Install the tools | ⬜ Not started |
+| 0 | Install the tools | ✅ Done |
 | 1 | Project folder + GitHub | ✅ Done |
-| 2 | Create the Supabase project | 🟡 In progress (2 checks left) |
-| 3 | Create the database tables | 🟡 SQL ready — you run it |
+| 2 | Create the Supabase project | ✅ Done |
+| 3 | Create the database tables | ✅ Done |
 | 4 | Extension skeleton (connect to Supabase) | ⬜ Not started |
 | 5 | Login screen | ⬜ Not started |
 | 6 | Profiles | ⬜ Not started |
@@ -48,11 +48,11 @@ for the screens.
 
 **Who:** you · **Time:** 15 min
 
-- [ ] Google Chrome (version 116 or newer)
-- [ ] VS Code — https://code.visualstudio.com
-- [ ] Git — https://git-scm.com
-- [ ] A free GitHub account — https://github.com
-- [ ] A free Supabase account — https://supabase.com (sign in with GitHub)
+- [x] Google Chrome (version 116 or newer)
+- [x] VS Code — https://code.visualstudio.com
+- [x] Git — https://git-scm.com
+- [x] A free GitHub account — https://github.com
+- [x] A free Supabase account — https://supabase.com (sign in with GitHub)
 
 **Done when:** `git --version` works in a terminal and you can log in to GitHub and Supabase.
 
@@ -96,8 +96,8 @@ for the screens.
   - **anon public key**
   > ✅ URL: `https://yuwvfgnytetrzfqjqdjx.supabase.co` · Key: the new-style **publishable key** (`sb_publishable_…`) = the anon key.
   > The anon key is safe to use inside the extension. **Never** use the `service_role` key in the extension.
-- [ ] Go to **Authentication → Users → Add user** and create your own login (email + password).
-- [ ] Go to **Authentication → Sign In / Providers** and turn **OFF** "Allow new users to sign up".
+- [x] Go to **Authentication → Users → Add user** and create your own login (email + password).
+- [x] Go to **Authentication → Sign In / Providers** and turn **OFF** "Allow new users to sign up".
   Only people you add can then log in.
 
 **Done when:** you have the URL + anon key, and your user appears in the Users list.
@@ -109,8 +109,8 @@ for the screens.
 **Who:** Claude writes the SQL, you run it · **Time:** 10 min
 
 - [x] Claude saves the SQL from **Appendix A** as `server/schema.sql`.
-- [ ] In Supabase, open **SQL Editor → New query**, paste the file and click **Run**.
-- [ ] Check **Table Editor**. You should see 6 tables: `profiles`, `groups`, `ads`, `campaigns`,
+- [x] In Supabase, open **SQL Editor → New query**, paste the file and click **Run**.
+- [x] Check **Table Editor**. You should see 6 tables: `profiles`, `groups`, `ads`, `campaigns`,
       `campaign_items`, `app_settings`.
 
 **Done when:** all 6 tables exist, and `profiles` contains NUVI Engineering + NUVI IT.
@@ -406,3 +406,6 @@ select id, short_name, tag from profiles order by sort_order;
 | 13/11/2026 | 1 | Git repo set up, `.gitignore` + README added, first commit pushed to private GitHub repo `nuvi-distribution-manager` |
 | 13/11/2026 | 2 | Supabase project `nuvi-distribution` created (Free, Seoul). URL and publishable key received |
 | 13/11/2026 | 3 | `server/schema.sql` written (Appendix A + API grants + check queries) |
+| 14/11/2026 | 0 | Tools confirmed in use (Chrome, VS Code, Git, GitHub, Supabase) |
+| 14/11/2026 | 2 | Login user created in Supabase Auth; public sign-ups turned off |
+| 14/11/2026 | 3 | `schema.sql` run in SQL Editor; 6 tables created; profiles NUVI Engineering (ENG) + NUVI IT (IT) confirmed |
