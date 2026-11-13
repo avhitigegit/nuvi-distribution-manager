@@ -443,3 +443,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 4 | Loaded unpacked in Chrome by owner; app opens |
 | 14/11/2026 | 5 | Supabase Auth login (email + password), session in `chrome.storage.local`, log out, Settings → My account; local Users screen and old local password hashes removed. Headless test: wrong password shows "Wrong email or password." |
 | 14/11/2026 | 5A | Owner chose a website over carrying the extension. `client/` made ready for Cloudflare Pages: config committed, `_headers` (CSP etc.), robots/noindex, favicon, `opener` removed on opened tabs. Local test under the same CSP: connects and login errors show correctly |
+| 14/11/2026 | 5A | Repo made **public** at owner's request (history scanned first: no secrets). Includes the 3 PDFs in `doc/` |
