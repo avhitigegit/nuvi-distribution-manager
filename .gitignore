@@ -1,10 +1,10 @@
 # Personal scratch notes
 input
 
-# Secrets / local config (Supabase URL + key go in client/js/config.js — see Step 4)
+# Secrets. client/js/config.js IS committed: it holds only the Supabase URL and the
+# publishable (anon) key, which the website needs. Never put a secret key there.
 .env
 *.local
-client/js/config.js
 
 # OS / editor
 .DS_Store

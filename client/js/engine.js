@@ -49,7 +49,7 @@ const Engine = (() => {
         s.tabId = t.id;
       }
     } else {
-      window.open(url, 'nuvi-distribution-tab');      // named window = same tab every time
+      { const w = window.open(url, 'nuvi-distribution-tab'); if (w) try { w.opener = null; } catch { /* ignore */ } }      // named window = same tab every time
     }
     s.openedAt = iso();
     await Store.save();
@@ -176,7 +176,7 @@ const Engine = (() => {
         if (db().session) { db().session.originalTabId = t.id; await Store.save(); }
       }
     } else {
-      window.open(url, 'nuvi-original-ad');
+      { const w = window.open(url, 'nuvi-original-ad'); if (w) try { w.opener = null; } catch { /* ignore */ } }
     }
   }
 

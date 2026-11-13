@@ -17,6 +17,7 @@
 | 3 | Create the database tables | ✅ Done |
 | 4 | Extension skeleton (connect to Supabase) | ✅ Done |
 | 5 | Login screen | 🟡 Built — you test it |
+| 5A | Publish as a website (Cloudflare Pages) | 🟡 Files ready — you connect Cloudflare |
 | 6 | Profiles | ⬜ Not started |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
@@ -144,6 +145,32 @@ for the screens.
   > ✅ Replaced by **Settings → My account** (change name, change password).
 
 **Done when:** you log in with the user from Step 2, close Chrome, reopen it, and are still logged in.
+
+---
+
+## Step 5A — Publish as a website (Cloudflare Pages)
+
+**Who:** Claude prepares the files, you connect Cloudflare once · **Time:** 15 min · **Cost:** free
+
+**Why:** open the app from any computer (or phone) with a link and a login. Nothing to install,
+no folder to carry, and every `git push` updates the site automatically. The Chrome extension
+still works from the same `client/` folder as a backup.
+
+- [x] `client/js/config.js` is committed (URL + publishable key only — safe; data is protected by login + RLS).
+- [x] `client/_headers`: security headers (CSP allows only this site + Supabase, no framing, no referrer).
+- [x] `client/robots.txt` + `noindex`: search engines do not list the site.
+- [x] Group pages open with `opener` removed, so Facebook tabs cannot control the app tab.
+- [ ] Create a free Cloudflare account: https://dash.cloudflare.com/sign-up
+- [ ] **Workers & Pages → Create → Pages → Connect to Git** → allow GitHub → choose repo `nuvi-distribution-manager`.
+- [ ] Build settings: Project name `nuvi-distribution` · Production branch `main` · Framework preset **None** ·
+      Build command **(empty)** · Build output directory **`client`** → **Save and Deploy**.
+- [ ] Open `https://nuvi-distribution.pages.dev` (the exact link is shown after deploy) and sign in.
+
+**Done when:** you sign in on the website from two different computers.
+
+**Domain (optional, later):** the free `*.pages.dev` link is enough. Cloudflare does not give free
+domains. If NUVI already owns a domain, a sub-domain such as `distribution.<your-domain>` can be
+added free under **Custom domains**. A new `.com` costs about USD 10/year from Cloudflare Registrar.
 
 ---
 
@@ -415,3 +442,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 2 | Sign-ups confirmed OFF (`disable_signup: true`) |
 | 14/11/2026 | 4 | Loaded unpacked in Chrome by owner; app opens |
 | 14/11/2026 | 5 | Supabase Auth login (email + password), session in `chrome.storage.local`, log out, Settings → My account; local Users screen and old local password hashes removed. Headless test: wrong password shows "Wrong email or password." |
+| 14/11/2026 | 5A | Owner chose a website over carrying the extension. `client/` made ready for Cloudflare Pages: config committed, `_headers` (CSP etc.), robots/noindex, favicon, `opener` removed on opened tabs. Local test under the same CSP: connects and login errors show correctly |
