@@ -1,0 +1,10 @@
+// Cloudflare Worker (static assets only) that serves the web app from client/.
+// Live: https://nuvi-distribution-manager.nuviengineering.workers.dev/
+{
+  "name": "nuvi-distribution-manager",
+  "compatibility_date": "2026-11-13",
+  "assets": {
+    "directory": "./client",
+    "not_found_handling": "404-page"
+  }
+}
