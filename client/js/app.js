@@ -144,6 +144,33 @@ function viewLogin() {
       h('p', { class: 'muted small center' }, 'Accounts are added by the owner in the Supabase dashboard. Forgot your password? The owner can reset it there.')));
 }
 
+/* Loads shared data from Supabase after sign-in. If the network fails but
+   profiles were loaded before, the saved copy is used. */
+function viewSyncing() {
+  const uid = Auth.current().id;
+  if (!S.syncing && !S.syncError) {
+    S.syncing = true;
+    Store.syncProfiles()
+      .then(() => { S.synced = uid; })
+      .catch(e => {
+        if (Store.db.meta.profilesSyncedAt && Store.profiles().length) {
+          S.synced = uid; setTimeout(() => toast('Could not reach the server. Showing the profiles saved on this computer.', 'error'), 0);
+        } else {
+          S.syncError = e instanceof AppError ? e.message : msg('E-SYS-01');
+        }
+      })
+      .finally(() => { S.syncing = false; render(); });
+  }
+  if (S.syncError) {
+    return h('div', { class: 'login-page' }, h('div', { class: 'login-card' },
+      h('div', { class: 'login-logo' }, 'N'), h('p', { class: 'err center' }, S.syncError),
+      h('button', { class: 'btn primary block', onclick: () => { S.syncError = null; render(); } }, 'Try again'),
+      h('button', { class: 'btn block mt', onclick: () => act(async () => { S.syncError = null; await Auth.logout(); render(); }) }, 'Log out')));
+  }
+  return h('div', { class: 'login-page' }, h('div', { class: 'login-card' },
+    h('div', { class: 'login-logo' }, 'N'), h('p', { class: 'muted center' }, 'Loading your profiles…')));
+}
+
 /* =====================================================================
    Layout: sidebar + content
    ===================================================================== */
@@ -193,7 +220,8 @@ function topbar() {
 
 function render() {
   const app = $('#app');
-  if (!Auth.current()) { document.documentElement.style.setProperty('--biz', '#13213f'); app.replaceChildren(viewLogin()); return; }
+  if (!Auth.current()) { S.synced = null; document.documentElement.style.setProperty('--biz', '#13213f'); app.replaceChildren(viewLogin()); return; }
+  if (S.synced !== Auth.current().id) { app.replaceChildren(viewSyncing()); return; }
   document.documentElement.style.setProperty('--biz', B().color);
   app.replaceChildren(h('div', { class: 'shell' },
     sidebar(),
@@ -732,7 +760,7 @@ function viewSettings() {
 function settingsProfiles() {
   return card(
     h('div', { class: 'row between mb' }, h('div', {}, h('h3', { style: 'margin:0' }, 'Profiles'),
-      h('div', { class: 'muted small' }, 'Each profile has its own groups, advertisements and campaigns. They never mix.')),
+      h('div', { class: 'muted small' }, 'Each profile has its own groups, advertisements and campaigns. They never mix. Profiles are saved online and shared by every computer.')),
       h('button', { class: 'btn primary', onclick: () => profileForm() }, '+ Add profile')),
     h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Profile'), h('th', {}, 'Full name'), h('th', {}, 'Groups'), h('th', {}, 'Ads'), h('th', {}))),
@@ -774,11 +802,12 @@ function profileForm(p) {
   saveBtn.onclick = () => act(async () => {
     Object.keys(errEls).forEach(k => touched[k] = true); state.check();
     if (saveBtn.disabled) return;
-    const saved = await Store.saveProfile(v);
     const t = [...new Set(types.value.split('\n').map(x => x.trim()).filter(Boolean))];
-    Store.db.settings.adTypes[saved.id] = t.length ? t : ['Other'];
-    if (!edit) Store.db.meta.lastBusinessId = saved.id;
-    await Store.save();
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    let saved;
+    try { saved = await Store.saveProfile(v, t); }
+    finally { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    if (!edit) { Store.db.meta.lastBusinessId = saved.id; await Store.save(); }
     m.close(); toast(edit ? 'Profile updated.' : `Profile "${saved.short}" added and selected.`); render();
   });
   const m = modal(edit ? 'Edit profile' : 'Add profile', body, [

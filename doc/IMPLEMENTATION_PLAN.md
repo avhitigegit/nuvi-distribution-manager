@@ -16,9 +16,9 @@
 | 2 | Create the Supabase project | ✅ Done |
 | 3 | Create the database tables | ✅ Done |
 | 4 | Extension skeleton (connect to Supabase) | ✅ Done |
-| 5 | Login screen | 🟡 Built — you test it |
-| 5A | Publish as a website (Cloudflare Pages) | 🟡 Files ready — you connect Cloudflare |
-| 6 | Profiles | ⬜ Not started |
+| 5 | Login screen | ✅ Done |
+| 5A | Publish as a website (Cloudflare) | ✅ Done |
+| 6 | Profiles | 🟡 Built — you test it |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
 | 9 | Distribution (the main feature) | ⬜ Not started |
@@ -160,11 +160,14 @@ still works from the same `client/` folder as a backup.
 - [x] `client/_headers`: security headers (CSP allows only this site + Supabase, no framing, no referrer).
 - [x] `client/robots.txt` + `noindex`: search engines do not list the site.
 - [x] Group pages open with `opener` removed, so Facebook tabs cannot control the app tab.
-- [ ] Create a free Cloudflare account: https://dash.cloudflare.com/sign-up
-- [ ] **Workers & Pages → Create → Pages → Connect to Git** → allow GitHub → choose repo `nuvi-distribution-manager`.
-- [ ] Build settings: Project name `nuvi-distribution` · Production branch `main` · Framework preset **None** ·
+- [x] Create a free Cloudflare account: https://dash.cloudflare.com/sign-up
+- [x] **Workers & Pages → Create → Pages → Connect to Git** → allow GitHub → choose repo `nuvi-distribution-manager`.
+- [x] Build settings: Project name `nuvi-distribution` · Production branch `main` · Framework preset **None** ·
       Build command **(empty)** · Build output directory **`client`** → **Save and Deploy**.
-- [ ] Open `https://nuvi-distribution.pages.dev` (the exact link is shown after deploy) and sign in.
+- [x] Open `https://nuvi-distribution.pages.dev` (the exact link is shown after deploy) and sign in.
+
+> ✅ Deployed as a Cloudflare **Worker** (static assets) instead of Pages:
+> **https://nuvi-distribution-manager.nuviengineering.workers.dev/** · auto-deploys on push to `main`.
 
 **Done when:** you sign in on the website from two different computers.
 
@@ -178,9 +181,9 @@ added free under **Custom domains**. A new `.com` costs about USD 10/year from C
 
 **Who:** Claude · **Time:** 30 min
 
-- [ ] Load profiles from the `profiles` table into the sidebar.
-- [ ] Settings → Profiles: add / edit (name, short name, tag, colour, ad types).
-- [ ] Delete is allowed only if the profile has no groups, ads or campaigns.
+- [x] Load profiles from the `profiles` table into the sidebar.
+- [x] Settings → Profiles: add / edit (name, short name, tag, colour, ad types).
+- [x] Delete is allowed only if the profile has no groups, ads or campaigns.
 
 **Done when:** you add "NUVI Test" and it appears in the sidebar, and still appears after a reload.
 
@@ -444,3 +447,6 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 5 | Supabase Auth login (email + password), session in `chrome.storage.local`, log out, Settings → My account; local Users screen and old local password hashes removed. Headless test: wrong password shows "Wrong email or password." |
 | 14/11/2026 | 5A | Owner chose a website over carrying the extension. `client/` made ready for Cloudflare Pages: config committed, `_headers` (CSP etc.), robots/noindex, favicon, `opener` removed on opened tabs. Local test under the same CSP: connects and login errors show correctly |
 | 14/11/2026 | 5A | Repo made **public** at owner's request (history scanned first: no secrets). Includes the 3 PDFs in `doc/` |
+| 14/11/2026 | 5A | Live at https://nuvi-distribution-manager.nuviengineering.workers.dev/ (Cloudflare Worker, static assets). Git link + build token reconnected by owner |
+| 14/11/2026 | 5 | Login tested by owner on the website |
+| 14/11/2026 | 6 | Profiles load from / save to Supabase (`Store.syncProfiles`). Old local ids (B001…) re-linked by tag; local-only profiles with data are created online; restore/reset re-sync. Loading screen + offline fallback. Mock-DB tests pass |

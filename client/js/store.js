@@ -1,6 +1,6 @@
 /* =====================================================================
    store.js — constants, messages, validation, CSV, storage, login
-   NUVI Social Media Advertisement Distribution Manager (v0.4)
+   NUVI Social Media Advertisement Distribution Manager (v0.5)
 
    Works in two modes:
      • Chrome extension  -> chrome.storage.local
@@ -34,7 +34,7 @@ const STATUS = {
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.5.0';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
                  csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6 };
 
@@ -83,6 +83,7 @@ const MESSAGES = {
   'E-AUTH-06': 'This email is not confirmed yet. Confirm the user in Supabase → Authentication → Users.',
   'E-AUTH-07': 'The new password must be different from the current one.',
   'E-AUTH-08': 'Enter your email and password.',
+  'E-AUTH-09': 'Your login has expired. Please log out and sign in again.',
   'E-NET-01': 'Cannot reach the server. Check your internet connection and try again.',
   'E-NET-02': 'The app is not connected to Supabase. Check js/config.js.',
   'E-SYS-01': 'Something went wrong. Please try again.',
@@ -303,33 +304,91 @@ const Store = {
     return 'CAM-' + String(c[kind]).padStart(3, '0');
   },
 
-  /* Profiles (businesses) */
+  /* Profiles (businesses) — stored in Supabase (Step 6).
+     Store.db.businesses is a local copy, refreshed by syncProfiles().
+     Profile ids are the database ids as strings ('1', '2', ...).        */
   profiles() { return Object.values(this.db.businesses).sort((a, b) => a.order - b.order); },
   profile(id) { return this.db.businesses[id] || { id, name: id, short: id, tag: '?', color: '#64748b' }; },
   profileHasData(id) {
     return [this.db.groups, this.db.ads, this.db.campaigns].some(col => Object.values(col).some(x => x.businessId === id));
   },
-  async saveProfile(input) {
+  _dbFail(error) {
+    console.error('[NUVI] Supabase error', error);
+    const code = error && error.code, m = (error && error.message || '').toLowerCase();
+    if (code === '23505') throw new AppError('E-DUP-03');
+    if (code === '23503') throw new AppError('E-PRF-01');
+    if (code === 'PGRST301' || m.includes('jwt')) throw new AppError('E-AUTH-09');
+    if (m.includes('fetch') || m.includes('network')) throw new AppError('E-NET-01');
+    throw new AppError('E-SYS-01');
+  },
+  _row(p, adTypes) {
+    return { name: p.name.trim(), short_name: p.short.trim(), tag: p.tag.trim().toUpperCase(),
+             color: p.color || '#64748b', ad_types: adTypes && adTypes.length ? adTypes : ['Other'] };
+  },
+  /* Re-points local groups/ads/campaigns from an old profile id to a new one. */
+  _remapProfile(from, to) {
+    if (from === to) return;
+    [this.db.groups, this.db.ads, this.db.campaigns].forEach(col =>
+      Object.values(col).forEach(x => { if (x.businessId === from) x.businessId = to; }));
+    if (this.db.meta.lastBusinessId === from) this.db.meta.lastBusinessId = to;
+    const t = this.db.settings.adTypes;
+    if (t[from] && !t[to]) t[to] = t[from];
+    delete t[from];
+  },
+  /* Loads profiles from Supabase. Local-only profiles (old 'B001'-style ids from
+     the prototype, demo data or a backup) are matched by tag / short name; a
+     local profile with data and no match is created in Supabase.          */
+  async syncProfiles() {
+    const load = async () => {
+      const { data, error } = await DB.client.from('profiles').select('*').order('sort_order').order('id');
+      if (error) this._dbFail(error);
+      return data;
+    };
+    let rows = await load();
+    const local = Object.values(this.db.businesses || {}).filter(b => !/^\d+$/.test(b.id));
+    let created = false;
+    for (const b of local) {
+      const key = x => (x || '').trim().toLowerCase();
+      let r = rows.find(r => key(r.tag) === key(b.tag)) || rows.find(r => key(r.short_name) === key(b.short));
+      if (!r && this.profileHasData(b.id)) {
+        const { data, error } = await DB.client.from('profiles')
+          .insert({ ...this._row(b, this.db.settings.adTypes[b.id]), sort_order: rows.length + 1 }).select().single();
+        if (error) this._dbFail(error);
+        r = data; rows.push(r); created = true;
+      }
+      if (r) this._remapProfile(b.id, String(r.id));
+    }
+    if (created) rows = await load();
+    this.db.businesses = {};
+    rows.forEach(r => {
+      const id = String(r.id);
+      this.db.businesses[id] = { id, name: r.name, short: r.short_name, tag: r.tag, color: r.color, order: r.sort_order };
+      this.db.settings.adTypes[id] = r.ad_types || DEFAULT_AD_TYPES.slice();
+    });
+    Object.keys(this.db.settings.adTypes).forEach(k => { if (!this.db.businesses[k]) delete this.db.settings.adTypes[k]; });
+    if (!this.db.businesses[this.db.meta.lastBusinessId] && rows.length) this.db.meta.lastBusinessId = String(rows[0].id);
+    this.db.meta.profilesSyncedAt = new Date().toISOString();
+    await this.save();
+  },
+  async saveProfile(input, adTypes) {
     const errs = validateProfile(input);
     const first = Object.keys(errs)[0];
     if (first) throw new AppError(errs[first]);
-    let id = input.id;
-    if (!id) { do { id = this.nextId('business'); } while (this.db.businesses[id]); }
-    const old = this.db.businesses[id] || {};
-    this.db.businesses[id] = { ...old, id, name: input.name.trim(), short: input.short.trim(),
-      tag: input.tag.trim().toUpperCase(), color: input.color || '#64748b',
-      order: old.order || Math.max(0, ...this.profiles().map(p => p.order)) + 1 };
-    if (!this.db.settings.adTypes[id]) this.db.settings.adTypes[id] = DEFAULT_AD_TYPES.slice();
-    await this.save();
-    return this.db.businesses[id];
+    const row = this._row(input, adTypes);
+    let res;
+    if (input.id) res = await DB.client.from('profiles').update(row).eq('id', Number(input.id)).select().single();
+    else res = await DB.client.from('profiles')
+      .insert({ ...row, sort_order: Math.max(0, ...this.profiles().map(p => p.order || 0)) + 1 }).select().single();
+    if (res.error) this._dbFail(res.error);
+    await this.syncProfiles();
+    return this.db.businesses[String(res.data.id)];
   },
   async deleteProfile(id) {
     if (this.profileHasData(id)) throw new AppError('E-PRF-01');
     if (this.profiles().length <= 1) throw new AppError('E-PRF-02');
-    delete this.db.businesses[id];
-    delete this.db.settings.adTypes[id];
-    if (this.db.meta.lastBusinessId === id) this.db.meta.lastBusinessId = this.profiles()[0].id;
-    await this.save();
+    const { error } = await DB.client.from('profiles').delete().eq('id', Number(id));
+    if (error) this._dbFail(error);
+    await this.syncProfiles();
   },
 
   /* Groups */
@@ -438,12 +497,14 @@ const Store = {
     this.db.users = users;
     this.db.settings = { ...structuredClone(DEFAULT_SETTINGS), ...this.db.settings };
     await this.save();
+    await this.syncProfiles();
   },
   async resetAll(withDemo) {
     const users = this.db.users;
     this.db = withDemo ? seedData() : emptyData();
     this.db.users = users;
     await this.save();
+    await this.syncProfiles();
   }
 };
 

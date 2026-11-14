@@ -1,8 +1,8 @@
-# Frontend — Chrome extension (v0.4)
+# Frontend — Chrome extension (v0.5)
 
 The real app, built step by step from `../doc/IMPLEMENTATION_PLAN.md`.
 Started in Step 4 as a copy of `../prototype` plus a Supabase connection.
-Login uses Supabase Auth (Step 5). The other screens still use local storage; Steps 6–11 move them to Supabase.
+Login (Step 5) and profiles (Step 6) use Supabase. Groups, ads and campaigns still use local storage; Steps 7–11 move them.
 
 ## Website (main way to use it)
 Hosted free on **Cloudflare Pages** from this folder (build output directory `client`, no build command).
