@@ -18,7 +18,7 @@
 | 4 | Extension skeleton (connect to Supabase) | ✅ Done |
 | 5 | Login screen | ✅ Done |
 | 5A | Publish as a website (Cloudflare) | ✅ Done |
-| 6 | Profiles | 🟡 Built — you test it |
+| 6 | Profiles | ✅ Done |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
 | 9 | Distribution (the main feature) | ⬜ Not started |
@@ -453,3 +453,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 5 | Login tested by owner on the website |
 | 14/11/2026 | 6 | Profiles load from / save to Supabase (`Store.syncProfiles`). Old local ids (B001…) re-linked by tag; local-only profiles with data are created online; restore/reset re-sync. Loading screen + offline fallback. Mock-DB tests pass |
 | 14/11/2026 | 5A | Cloudflare Git builds did not trigger after reconnect. Added `wrangler.jsonc` + `404.html`; owner logged in with `wrangler login`; v0.5.0 deployed directly with `npx wrangler deploy` and verified live |
+| 14/11/2026 | 6 | Tested by owner on the website: add / edit / delete profile, Supabase table updated |
