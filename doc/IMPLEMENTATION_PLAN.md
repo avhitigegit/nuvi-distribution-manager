@@ -167,7 +167,9 @@ still works from the same `client/` folder as a backup.
 - [x] Open `https://nuvi-distribution.pages.dev` (the exact link is shown after deploy) and sign in.
 
 > ✅ Deployed as a Cloudflare **Worker** (static assets) instead of Pages:
-> **https://nuvi-distribution-manager.nuviengineering.workers.dev/** · auto-deploys on push to `main`.
+> **https://nuvi-distribution-manager.nuviengineering.workers.dev/**
+> Publish: `npx wrangler deploy` from the project folder (uses `wrangler.jsonc` → only `client/` is published).
+> Git auto-build is set up in Cloudflare but did not trigger on push (14/11/2026), so Claude deploys directly after each step.
 
 **Done when:** you sign in on the website from two different computers.
 
@@ -450,3 +452,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 5A | Live at https://nuvi-distribution-manager.nuviengineering.workers.dev/ (Cloudflare Worker, static assets). Git link + build token reconnected by owner |
 | 14/11/2026 | 5 | Login tested by owner on the website |
 | 14/11/2026 | 6 | Profiles load from / save to Supabase (`Store.syncProfiles`). Old local ids (B001…) re-linked by tag; local-only profiles with data are created online; restore/reset re-sync. Loading screen + offline fallback. Mock-DB tests pass |
+| 14/11/2026 | 5A | Cloudflare Git builds did not trigger after reconnect. Added `wrangler.jsonc` + `404.html`; owner logged in with `wrangler login`; v0.5.0 deployed directly with `npx wrangler deploy` and verified live |
