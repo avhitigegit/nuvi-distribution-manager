@@ -22,3 +22,8 @@ posting yourself.
 ## Progress
 
 See [`doc/IMPLEMENTATION_PLAN.md`](doc/IMPLEMENTATION_PLAN.md).
+
+## How updates go live
+Push to `main` → GitHub Actions **Deploy website** publishes `client/` to Cloudflare
+(about 1 minute) → open pages show a **Reload now** bar. Live site:
+https://nuvi-distribution-manager.nuviengineering.workers.dev/

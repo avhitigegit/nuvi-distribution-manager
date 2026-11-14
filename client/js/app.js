@@ -141,6 +141,7 @@ function viewLogin() {
       h('label', { class: 'field' }, h('span', {}, 'Email'), inp('email', { type: 'email', autocomplete: 'username', autofocus: true })),
       h('label', { class: 'field' }, h('span', {}, 'Password'), inp('password', { type: 'password', autocomplete: 'current-password' })),
       err, btn,
+      h('p', { class: 'muted small center' }, Updates.label()),
       h('p', { class: 'muted small center' }, 'Accounts are added by the owner in the Supabase dashboard. Forgot your password? The owner can reset it there.')));
 }
 
@@ -203,7 +204,8 @@ function sidebar() {
     h('div', { class: 'side-foot' },
       h('div', { class: 'avatar' }, (me.name || '?').slice(0, 1).toUpperCase()),
       h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'b' }, me.name),
-        h('div', { class: 'side-sub', style: 'overflow:hidden;text-overflow:ellipsis', title: me.email }, me.email)),
+        h('div', { class: 'side-sub', style: 'overflow:hidden;text-overflow:ellipsis', title: me.email }, me.email),
+        h('div', { class: 'side-sub', style: 'opacity:.7' }, Updates.label())),
       h('button', { class: 'btn sm ghost-light', onclick: () => act(async () => { await Auth.logout(); render(); }) }, 'Log out')));
 }
 
@@ -899,7 +901,7 @@ function settingsBackup() {
       h('div', { class: 'row gap wrap' },
         h('button', { class: 'btn danger-ghost', onclick: () => resetData(false) }, 'Reset all data'),
         h('button', { class: 'btn', onclick: () => resetData(true) }, 'Reload demo data')),
-      h('p', { class: 'muted small mt' }, `Version ${APP_VERSION} · storage: ${HAS_CHROME_STORAGE ? 'chrome.storage.local' : 'browser localStorage'}`)));
+      h('p', { class: 'muted small mt' }, `Version ${Updates.label()} · storage: ${HAS_CHROME_STORAGE ? 'chrome.storage.local' : 'browser localStorage'}`)));
 }
 
 async function doBackup() {
@@ -936,6 +938,7 @@ async function resetData(withDemo) {
   // Re-draw when the user signs in or out (also when a session expires).
   await Auth.init(() => { if (!document.querySelector('.modal-wrap')) render(); });
   render();
+  Updates.start(() => { if (!document.querySelector('.modal-wrap')) render(); });
   // Keep the page in sync if data is changed in another tab.
   if (HAS_CHROME_STORAGE) {
     chrome.storage.onChanged.addListener(async (changes, area) => {

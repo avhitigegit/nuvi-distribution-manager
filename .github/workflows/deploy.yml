@@ -1,0 +1,50 @@
+# Publishes the web app (client/) to Cloudflare on every push to main.
+# Needs one repository secret: CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template).
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SITE: https://nuvi-distribution-manager.nuviengineering.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write version.json
+        run: |
+          VERSION=$(grep -oP "APP_VERSION = '\K[^']+" client/js/store.js)
+          printf '{"version":"%s","commit":"%s","deployedAt":"%s"}\n' \
+            "$VERSION" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > client/version.json
+          cat client/version.json
+
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.162.0 deploy
+
+      - name: Check the live site
+        run: |
+          for i in $(seq 1 12); do
+            LIVE=$(curl -fsS "$SITE/version.json?t=$RANDOM" || true)
+            echo "live: $LIVE"
+            echo "$LIVE" | grep -q "$GITHUB_SHA" && { echo "✅ Live site is on $GITHUB_SHA"; exit 0; }
+            sleep 5
+          done
+          echo "❌ Live site did not update"; exit 1

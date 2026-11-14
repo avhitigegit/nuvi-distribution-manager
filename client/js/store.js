@@ -1,6 +1,6 @@
 /* =====================================================================
    store.js — constants, messages, validation, CSV, storage, login
-   NUVI Social Media Advertisement Distribution Manager (v0.5)
+   NUVI Social Media Advertisement Distribution Manager (v0.5.1)
 
    Works in two modes:
      • Chrome extension  -> chrome.storage.local
@@ -34,7 +34,7 @@ const STATUS = {
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.5.1';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
                  csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6 };
 

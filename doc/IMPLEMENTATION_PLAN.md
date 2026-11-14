@@ -168,8 +168,10 @@ still works from the same `client/` folder as a backup.
 
 > ✅ Deployed as a Cloudflare **Worker** (static assets) instead of Pages:
 > **https://nuvi-distribution-manager.nuviengineering.workers.dev/**
-> Publish: `npx wrangler deploy` from the project folder (uses `wrangler.jsonc` → only `client/` is published).
-> Git auto-build is set up in Cloudflare but did not trigger on push (14/11/2026), so Claude deploys directly after each step.
+> **How updates go live:** push to `main` → GitHub Action **Deploy website** (`.github/workflows/deploy.yml`)
+> runs `wrangler deploy` (only `client/` is published, see `wrangler.jsonc`) → checks the live site → ✅ in about 1 minute.
+> Open pages show **"A new version is available → Reload now"** within 60 s. Version + build id are shown on the
+> login screen and in the sidebar. Manual fallback: `npx wrangler deploy` from the project folder.
 
 **Done when:** you sign in on the website from two different computers.
 
@@ -454,3 +456,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 6 | Profiles load from / save to Supabase (`Store.syncProfiles`). Old local ids (B001…) re-linked by tag; local-only profiles with data are created online; restore/reset re-sync. Loading screen + offline fallback. Mock-DB tests pass |
 | 14/11/2026 | 5A | Cloudflare Git builds did not trigger after reconnect. Added `wrangler.jsonc` + `404.html`; owner logged in with `wrangler login`; v0.5.0 deployed directly with `npx wrangler deploy` and verified live |
 | 14/11/2026 | 6 | Tested by owner on the website: add / edit / delete profile, Supabase table updated |
+| 14/11/2026 | 5A | Auto-deploy via GitHub Actions: `deploy.yml` (deploy + live check), `version.json` per build, "new version" Reload bar, version/build shown in app, no-cache headers. v0.5.1 |

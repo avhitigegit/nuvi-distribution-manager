@@ -191,3 +191,6 @@ textarea { resize: vertical; }
 .toast.error { background: var(--bad); }
 .toast.out { opacity: 0; transform: translateY(6px); }
 @media (max-width: 600px) { .grid3 { grid-template-columns: minmax(0, 1fr); } #toasts { left: 16px; right: 16px; } }
+
+/* New-version notice (js/updates.js) */
+.update-bar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 200; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; background: #13213f; color: #fff; padding: 10px 14px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: calc(100% - 32px); }

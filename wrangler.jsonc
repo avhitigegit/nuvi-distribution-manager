@@ -2,6 +2,7 @@
 // Live: https://nuvi-distribution-manager.nuviengineering.workers.dev/
 {
   "name": "nuvi-distribution-manager",
+  "account_id": "bb1fef2c275db99f9d380fdfc4eccf53",
   "compatibility_date": "2026-11-13",
   "assets": {
     "directory": "./client",

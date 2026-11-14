@@ -22,3 +22,6 @@ nuvi-distribution-backup-*.json
 # Screenshots in the project root
 /*.png
 /*.PNG
+
+# Written at deploy time by the GitHub Action
+client/version.json
