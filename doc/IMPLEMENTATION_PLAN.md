@@ -457,3 +457,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 5A | Cloudflare Git builds did not trigger after reconnect. Added `wrangler.jsonc` + `404.html`; owner logged in with `wrangler login`; v0.5.0 deployed directly with `npx wrangler deploy` and verified live |
 | 14/11/2026 | 6 | Tested by owner on the website: add / edit / delete profile, Supabase table updated |
 | 14/11/2026 | 5A | Auto-deploy via GitHub Actions: `deploy.yml` (deploy + live check), `version.json` per build, "new version" Reload bar, version/build shown in app, no-cache headers. v0.5.1 |
+| 14/11/2026 | 5A | Owner created Cloudflare API token, saved `CLOUDFLARE_API_TOKEN` in GitHub secrets, disabled Cloudflare Git builds |
