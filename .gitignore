@@ -25,3 +25,6 @@ nuvi-distribution-backup-*.json
 
 # Written at deploy time by the GitHub Action
 client/version.json
+
+# Wrangler local cache
+.wrangler/
