@@ -36,9 +36,10 @@ const STATUS = {
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.6.1';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
-                 csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6 };
+                 csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6,
+                 about: 1000, contact: 120, pageAdmins: 20, logoPx: 256 };
 
 /* A small set of main group categories (editable in Settings). */
 const DEFAULT_CATEGORIES = ['Property', 'IT & Software', 'Online Selling', 'Business', 'Community', 'Other'];
@@ -61,6 +62,10 @@ const MESSAGES = {
   'E-LEN-01': 'Too long. Maximum {max} characters.',
   'E-URL-01': 'Please enter a valid Facebook group link (facebook.com/groups/...).',
   'E-URL-02': 'Please enter a valid Facebook post link.',
+  'E-URL-03': 'Please enter a valid Facebook Page link (https://www.facebook.com/...).',
+  'E-URL-04': 'Please enter a valid web address (https://...).',
+  'E-FMT-02': 'Please enter a valid email address.',
+  'E-IMG-01': 'Please choose an image file (PNG, JPG, WEBP or SVG).',
   'E-DUP-01': 'This group already exists: {name}.',
   'E-DUP-02': 'An advertisement with this name already exists.',
   'E-DUP-03': 'A profile with this name already exists.',
@@ -175,6 +180,12 @@ function validateProfile(p) {
   else if (short.length > LIMITS.profileShort) e.short = 'E-LEN-01';
   else if (Object.values(Store.db.businesses).some(b => b.id !== p.id && b.short.toLowerCase() === short.toLowerCase())) e.short = 'E-DUP-03';
   if (!tag) e.tag = 'E-REQ-01'; else if (tag.length > 4) e.tag = 'E-LEN-01';
+  const fb = (p.fbPageUrl || '').trim(), web = (p.website || '').trim(), mail = (p.email || '').trim();
+  if (fb && !/^https:\/\/([a-z0-9-]+\.)?(facebook|fb)\.com\/\S+$/i.test(fb)) e.fbPageUrl = 'E-URL-03';
+  if (web && !/^https?:\/\/[^\s.]+\.\S+$/i.test(web)) e.website = 'E-URL-04';
+  if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) e.email = 'E-FMT-02';
+  ['phone', 'whatsapp', 'address'].forEach(k => { if ((p[k] || '').length > LIMITS.contact) e[k] = 'E-LEN-01'; });
+  if ((p.about || '').length > LIMITS.about) e.about = 'E-LEN-01';
   return e;
 }
 
@@ -183,7 +194,8 @@ function errText(code, field) {
   if (!code) return '';
   const [c, extra] = code.split(':');
   const max = { name: LIMITS.groupName, adName: LIMITS.adName, notes: LIMITS.notes, description: LIMITS.description,
-                profileName: LIMITS.profileName, short: LIMITS.profileShort, tag: 4 }[field];
+                profileName: LIMITS.profileName, short: LIMITS.profileShort, tag: 4,
+                about: LIMITS.about, phone: LIMITS.contact, whatsapp: LIMITS.contact, address: LIMITS.contact }[field];
   return msg(c, { name: extra, max });
 }
 
@@ -328,8 +340,13 @@ const Store = {
     throw new AppError('E-SYS-01');
   },
   _row(p, adTypes) {
+    const t = k => (p[k] || '').trim() || null;
     return { name: p.name.trim(), short_name: p.short.trim(), tag: p.tag.trim().toUpperCase(),
-             color: p.color || '#64748b', ad_types: adTypes && adTypes.length ? adTypes : ['Other'] };
+             color: p.color || '#64748b', ad_types: adTypes && adTypes.length ? adTypes : ['Other'],
+             logo: p.logo || null, fb_page_url: t('fbPageUrl'), website: t('website'), email: t('email'),
+             phone: t('phone'), whatsapp: t('whatsapp'), address: t('address'), about: t('about'),
+             page_admins: (p.pageAdmins || []).map(a => ({ name: (a.name || '').trim(), role: (a.role || '').trim(), contact: (a.contact || '').trim() }))
+               .filter(a => a.name).slice(0, LIMITS.pageAdmins) };
   },
   /* Re-points local groups/ads/campaigns from an old profile id to a new one. */
   _remapProfile(from, to) {
@@ -368,7 +385,9 @@ const Store = {
     this.db.businesses = {};
     rows.forEach(r => {
       const id = String(r.id);
-      this.db.businesses[id] = { id, name: r.name, short: r.short_name, tag: r.tag, color: r.color, order: r.sort_order };
+      this.db.businesses[id] = { id, name: r.name, short: r.short_name, tag: r.tag, color: r.color, order: r.sort_order,
+        logo: r.logo || '', fbPageUrl: r.fb_page_url || '', website: r.website || '', email: r.email || '', phone: r.phone || '',
+        whatsapp: r.whatsapp || '', address: r.address || '', about: r.about || '', pageAdmins: r.page_admins || [] };
       this.db.settings.adTypes[id] = r.ad_types || DEFAULT_AD_TYPES.slice();
     });
     Object.keys(this.db.settings.adTypes).forEach(k => { if (!this.db.businesses[k]) delete this.db.settings.adTypes[k]; });

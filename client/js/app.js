@@ -24,6 +24,12 @@ function h(tag, attrs, ...kids) {
 const $ = sel => document.querySelector(sel);
 const badge = st => h('span', { class: 'badge', style: `--c:${(STATUS[st] || {}).color || '#94a3b8'}` }, (STATUS[st] || {}).label || st);
 const profileTag = p => h('span', { class: 'ptag', style: `--pc:${p.color}` }, p.tag);
+/* Profile logo, or the coloured tag when no logo is set. */
+const profileLogo = (p, size = 32) => p.logo
+  ? h('img', { class: 'plogo', src: p.logo, alt: p.tag, style: `width:${size}px;height:${size}px` })
+  : h('span', { class: 'plogo ptag-box', style: `--pc:${p.color};width:${size}px;height:${size}px;font-size:${Math.round(size / 2.8)}px` }, p.tag);
+/* Safe outside link (opens in a new tab, no access back to this app). */
+const extLink = (href, text, cls = 'link') => h('a', { class: cls, href, target: '_blank', rel: 'noopener noreferrer' }, text);
 
 /* ---------- App state ---------- */
 const S = {
@@ -261,7 +267,7 @@ function sidebar() {
     h('div', { class: 'profiles' }, Store.profiles().map(p =>
       h('button', { class: 'profile-btn' + (p.id === biz() ? ' on' : ''), style: `--pc:${p.color}`,
         onclick: () => act(async () => { Store.db.meta.lastBusinessId = p.id; S.dist = { adId: '', selected: new Set(), q: '' }; await Store.save(); S.navOpen = false; render(); }) },
-        h('span', { class: 'dot' }), h('span', { class: 'grow' }, p.short), h('span', { class: 'ptag-sm' }, p.tag)))),
+        p.logo ? profileLogo(p, 18) : h('span', { class: 'dot' }), h('span', { class: 'grow' }, p.short), h('span', { class: 'ptag-sm' }, p.tag)))),
     Auth.isAdmin() ? h('button', { class: 'side-link', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add / manage profiles') : null,
 
     h('div', { class: 'side-section' }, 'Menu'),
@@ -283,7 +289,9 @@ function topbar() {
   const p = B();
   return h('header', { class: 'topbar' },
     h('button', { class: 'icon-btn menu-toggle', onclick: () => { S.navOpen = !S.navOpen; render(); }, title: 'Menu' }, '☰'),
-    h('div', { class: 'top-profile' }, profileTag(p), h('div', {}, h('div', { class: 'b' }, p.name), h('div', { class: 'muted small' }, 'Only this profile’s groups, ads and campaigns are shown'))),
+    h('div', { class: 'top-profile' }, profileLogo(p, 36), h('div', { style: 'min-width:0' }, h('div', { class: 'b' }, p.name),
+      h('div', { class: 'muted small' }, 'Only this profile’s groups, ads and campaigns are shown',
+        p.fbPageUrl ? h('span', {}, ' · ', extLink(p.fbPageUrl, 'Facebook Page ↗')) : null))),
     h('span', { class: 'grow' }),
     st.active ? h('button', { class: 'running-chip', onclick: () => go('distribute') },
       `● ${st.campaign.status === 'PAUSED' ? 'Paused' : 'Running'}: ${st.campaign.id} (${st.current.index + 1}/${st.current.total}) — ${Store.profile(st.campaign.businessId).tag}`) : null);
@@ -362,8 +370,9 @@ function viewDashboard() {
         h('div', { class: 'list' }, Store.profiles().map(p => {
           const n = Object.values(Store.db.groups).filter(g => g.businessId === p.id).length;
           const a = Object.values(Store.db.ads).filter(x => x.businessId === p.id).length;
-          return h('div', { class: 'list-row' + (p.id === biz() ? ' hl' : '') }, profileTag(p),
-            h('div', { class: 'grow' }, h('div', { class: 'b' }, p.short), h('div', { class: 'muted small' }, `${n} groups · ${a} ads`)));
+          return h('div', { class: 'list-row' + (p.id === biz() ? ' hl' : '') }, profileLogo(p, 32),
+            h('div', { class: 'grow' }, h('div', { class: 'b' }, p.short), h('div', { class: 'muted small' }, `${n} groups · ${a} ads`)),
+            p.fbPageUrl ? extLink(p.fbPageUrl, 'Page ↗', 'btn sm') : null);
         })),
         Auth.isAdmin() ? h('button', { class: 'link mt', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add a profile') : null)),
     h('p', { class: 'muted small center' }, 'The application only opens group pages. You always share and post yourself.'));
@@ -837,10 +846,12 @@ function settingsProfiles() {
       h('div', { class: 'muted small' }, 'Each profile has its own groups, advertisements and campaigns. They never mix. Profiles are saved online and shared by every computer.')),
       h('button', { class: 'btn primary', onclick: () => profileForm() }, '+ Add profile')),
     h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Profile'), h('th', {}, 'Full name'), h('th', {}, 'Groups'), h('th', {}, 'Ads'), h('th', {}))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Profile'), h('th', {}, 'Full name'), h('th', {}, 'Facebook Page'), h('th', {}, 'Page admins'), h('th', {}, 'Groups'), h('th', {}, 'Ads'), h('th', {}))),
       h('tbody', {}, Store.profiles().map(p => h('tr', {},
-        h('td', {}, h('div', { class: 'row gap' }, profileTag(p), h('b', {}, p.short))),
-        h('td', {}, p.name),
+        h('td', {}, h('div', { class: 'row gap' }, profileLogo(p, 32), h('div', {}, h('b', {}, p.short), p.logo ? h('div', {}, profileTag(p)) : null))),
+        h('td', {}, p.name, p.about ? h('div', { class: 'muted small clamp2' }, p.about) : null),
+        h('td', { class: 'small' }, p.fbPageUrl ? extLink(p.fbPageUrl, 'Open ↗') : h('span', { class: 'muted' }, '—')),
+        h('td', { class: 'small' }, (p.pageAdmins || []).length ? p.pageAdmins.map(a => h('div', {}, a.name, a.role ? h('span', { class: 'muted' }, ` · ${a.role}`) : null)) : h('span', { class: 'muted' }, '—')),
         h('td', {}, Object.values(Store.db.groups).filter(g => g.businessId === p.id).length),
         h('td', {}, Object.values(Store.db.ads).filter(a => a.businessId === p.id).length),
         h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: () => profileForm(p) }, 'Edit'))))))));
@@ -849,28 +860,104 @@ function settingsProfiles() {
 function profileForm(p) {
   const edit = !!p;
   const used = Store.profiles().map(x => x.color);
-  const state = { v: p ? { ...p } : { name: '', short: '', tag: '', color: PROFILE_COLORS.find(c => !used.includes(c)) || '#0f766e' } };
+  const blank = { name: '', short: '', tag: '', color: PROFILE_COLORS.find(c => !used.includes(c)) || '#0f766e',
+                  logo: '', fbPageUrl: '', website: '', email: '', phone: '', whatsapp: '', address: '', about: '', pageAdmins: [] };
+  const state = { v: { ...blank, ...(p || {}) } };
   const v = state.v;
+  v.pageAdmins = (v.pageAdmins || []).map(a => ({ ...a }));
   const touched = {}, errEls = {};
-  const types = h('textarea', { rows: 4, placeholder: 'One per line' }, (p ? Store.db.settings.adTypes[p.id] || [] : DEFAULT_AD_TYPES).join('\n'));
+  const types = h('textarea', { rows: 3, placeholder: 'One per line' }, (p ? Store.db.settings.adTypes[p.id] || [] : DEFAULT_AD_TYPES).join('\n'));
   const saveBtn = h('button', { class: 'btn primary' }, 'Save');
+  const labels = { name: 'profileName' };
   state.check = () => {
     const e = validateProfile(v);
-    Object.keys(errEls).forEach(k => { errEls[k].textContent = touched[k] ? errText(e[k], k === 'name' ? 'profileName' : k) : ''; });
+    Object.keys(errEls).forEach(k => { errEls[k].textContent = touched[k] ? errText(e[k], labels[k] || k) : ''; });
     saveBtn.disabled = Object.keys(e).length > 0;
   };
   const opt = { touched, errEls };
+  const field = (key, label, attrs = {}, hint) =>
+    makeField(state, key, label, h(attrs.rows ? 'textarea' : 'input', { value: v[key] || '', ...attrs }, attrs.rows ? v[key] || '' : null), { ...opt, hint });
+
+  /* Colour */
   const swatches = h('div', { class: 'swatches' });
   const drawSw = () => swatches.replaceChildren(...PROFILE_COLORS.map(c =>
-    h('button', { type: 'button', class: 'swatch' + (c === v.color ? ' on' : ''), style: `background:${c}`, title: c, onclick: () => { v.color = c; drawSw(); } })));
-  drawSw();
+    h('button', { type: 'button', class: 'swatch' + (c === v.color ? ' on' : ''), style: `background:${c}`, title: c, onclick: () => { v.color = c; drawSw(); drawLogo(); } })));
 
+  /* Logo: resized to max 256 px in the browser and saved as a small image. */
+  const logoErr = h('div', { class: 'err' });
+  const logoBox = h('div', { class: 'logo-edit' });
+  const fileIn = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', style: 'display:none',
+    onchange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) readLogo(f); } });
+  const drawLogo = () => logoBox.replaceChildren(
+    profileLogo(v, 64),
+    h('div', { class: 'row gap wrap' },
+      h('button', { type: 'button', class: 'btn sm', onclick: () => fileIn.click() }, v.logo ? 'Change logo' : 'Upload logo'),
+      v.logo ? h('button', { type: 'button', class: 'btn sm danger-ghost', onclick: () => { v.logo = ''; drawLogo(); } }, 'Remove') : null,
+      h('span', { class: 'muted small' }, 'Square image works best. Resized automatically.')),
+    fileIn);
+  const readLogo = f => {
+    logoErr.textContent = '';
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(f.type)) { logoErr.textContent = msg('E-IMG-01'); return; }
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = LIMITS.logoPx, k = Math.min(1, max / Math.max(img.naturalWidth || max, img.naturalHeight || max));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round((img.naturalWidth || max) * k)); c.height = Math.max(1, Math.round((img.naturalHeight || max) * k));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        let url = c.toDataURL('image/png');
+        if (url.length > 280000) url = c.toDataURL('image/webp', 0.9);
+        if (url.length > 280000) { logoErr.textContent = 'This image is too large. Please choose a simpler logo.'; return; }
+        v.logo = url; drawLogo();
+      };
+      img.onerror = () => { logoErr.textContent = msg('E-IMG-01'); };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  };
+
+  /* Facebook Page admins (people who manage the Page) */
+  const adminsBox = h('div', { class: 'list' });
+  const drawAdmins = () => adminsBox.replaceChildren(
+    ...v.pageAdmins.map((a, i) => h('div', { class: 'admin-row' },
+      h('input', { value: a.name || '', placeholder: 'Name *', maxlength: 80, oninput: e => { a.name = e.target.value; } }),
+      h('input', { value: a.role || '', placeholder: 'Role (Admin / Editor…)', maxlength: 40, oninput: e => { a.role = e.target.value; } }),
+      h('input', { value: a.contact || '', placeholder: 'Phone or email', maxlength: 120, oninput: e => { a.contact = e.target.value; } }),
+      h('button', { type: 'button', class: 'icon-btn', title: 'Remove', onclick: () => { v.pageAdmins.splice(i, 1); drawAdmins(); } }, '✕'))),
+    v.pageAdmins.length < LIMITS.pageAdmins
+      ? h('button', { type: 'button', class: 'btn sm', style: 'align-self:flex-start', onclick: () => { v.pageAdmins.push({ name: '', role: 'Admin', contact: '' }); drawAdmins(); } }, '+ Add page admin')
+      : null);
+  drawSw(); drawLogo(); drawAdmins();
+
+  const section = t => h('div', { class: 'form-section' }, t);
   const body = h('div', {},
-    makeField(state, 'name', 'Full name *', h('input', { value: v.name, placeholder: 'NUVI Marketing (Pvt) Ltd' }), opt),
+    section('Basic'),
+    h('div', { class: 'field' }, h('span', {}, 'Logo'), logoBox, logoErr),
+    field('name', 'Full name *', { placeholder: 'NUVI Marketing (Pvt) Ltd' }),
     h('div', { class: 'grid2' },
-      makeField(state, 'short', 'Short name *', h('input', { value: v.short, placeholder: 'NUVI Marketing' }), opt),
-      makeField(state, 'tag', 'Tag (2–4 letters) *', h('input', { value: v.tag, maxlength: 4, placeholder: 'MKT', style: 'text-transform:uppercase' }), opt)),
+      field('short', 'Short name *', { placeholder: 'NUVI Marketing' }),
+      field('tag', 'Tag (2–4 letters) *', { maxlength: 4, placeholder: 'MKT', style: 'text-transform:uppercase' })),
     h('div', { class: 'field' }, h('span', {}, 'Colour'), swatches),
+    field('about', 'About (short description)', { rows: 2, maxlength: LIMITS.about, placeholder: 'What this business does — handy when writing posts' }),
+
+    section('Facebook & web'),
+    field('fbPageUrl', 'Facebook Page link', { placeholder: 'https://www.facebook.com/yourpage' }, 'The business Page you share advertisements from.'),
+    field('website', 'Website', { placeholder: 'https://www.example.lk' }),
+
+    section('Contact'),
+    h('div', { class: 'grid2' },
+      field('phone', 'Phone', { placeholder: '+94 77 123 4567' }),
+      field('whatsapp', 'WhatsApp', { placeholder: '+94 77 123 4567' })),
+    h('div', { class: 'grid2' },
+      field('email', 'Email', { type: 'email', placeholder: 'info@example.lk' }),
+      field('address', 'Address / city', { placeholder: 'Colombo' })),
+
+    section('Facebook Page admins'),
+    h('div', { class: 'muted small mb' }, 'Who manages this Facebook Page (for your records only — nothing is sent to Facebook).'),
+    adminsBox,
+
+    section('Advertisements'),
     h('label', { class: 'field' }, h('span', {}, 'Advertisement types for this profile'), types));
 
   saveBtn.onclick = () => act(async () => {
@@ -884,13 +971,13 @@ function profileForm(p) {
     if (!edit) { Store.db.meta.lastBusinessId = saved.id; await Store.save(); }
     m.close(); toast(edit ? 'Profile updated.' : `Profile "${saved.short}" added and selected.`); render();
   });
-  const m = modal(edit ? 'Edit profile' : 'Add profile', body, [
+  const m = modal(edit ? `Edit profile · ${p.short}` : 'Add profile', body, [
     edit ? h('button', { class: 'btn danger-ghost', onclick: async () => {
       if (Store.profileHasData(p.id)) return toast(msg('E-PRF-01'), 'error');
       if (!await confirmBox(msg('C-DEL-01', { name: p.short }), 'Delete', true)) return;
       act(async () => { await Store.deleteProfile(p.id); m.close(); toast('Profile deleted.'); render(); });
     } }, 'Delete') : null,
-    h('span', { class: 'grow' }), h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'), saveBtn]);
+    h('span', { class: 'grow' }), h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'), saveBtn], true);
   if (edit) Object.keys(errEls).forEach(k => touched[k] = true);
   state.check();
 }
