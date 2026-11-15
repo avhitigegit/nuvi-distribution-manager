@@ -131,6 +131,9 @@ table { width: 100%; border-collapse: collapse; }
 
 /* ---------- Forms ---------- */
 input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px; background: #fff; }
+input[type=checkbox], input[type=radio] { width: auto; padding: 0; }
+.list-row.check.center-y { align-items: center; }
+.list-row.check.center-y input { margin-top: 0; }
 input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--biz) 40%, transparent); border-color: var(--biz); }
 input[readonly] { background: #f9fafb; color: var(--muted); }
 textarea { resize: vertical; }

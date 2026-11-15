@@ -964,7 +964,7 @@ function userForm(u) {
               profile_ids: new Set(edit ? (u.profile_ids || []).map(String) : []) };
   const err = h('div', { class: 'err' });
   const profBox = h('div', { class: 'field' }, h('span', {}, 'Profiles this member can use *'),
-    h('div', { class: 'list' }, Store.profiles().map(p => h('label', { class: 'row gap' },
+    h('div', { class: 'list' }, Store.profiles().map(p => h('label', { class: 'list-row check center-y' },
       h('input', { type: 'checkbox', checked: v.profile_ids.has(p.id), onchange: e => { e.target.checked ? v.profile_ids.add(p.id) : v.profile_ids.delete(p.id); err.textContent = ''; } }),
       profileTag(p), h('span', {}, p.name)))));
   const showProfiles = () => { profBox.style.display = v.role === 'ADMIN' ? 'none' : ''; };
