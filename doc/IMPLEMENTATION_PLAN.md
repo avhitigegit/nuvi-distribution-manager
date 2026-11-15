@@ -19,7 +19,7 @@
 | 5 | Login screen | ✅ Done |
 | 5A | Publish as a website (Cloudflare) | ✅ Done |
 | 6 | Profiles | ✅ Done |
-| 6B | Users & permissions (Admin / Member) | 🟡 Built — your setup steps |
+| 6B | Users & permissions (Admin / Member) | ✅ Done |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
 | 9 | Distribution (the main feature) | ⬜ Not started |
