@@ -20,7 +20,7 @@
 | 5A | Publish as a website (Cloudflare) | ✅ Done |
 | 6 | Profiles | ✅ Done |
 | 6B | Users & permissions (Admin / Member) | ✅ Done |
-| 7 | Facebook groups (+ CSV) | ⬜ Not started |
+| 7 | Facebook groups (+ CSV) | 🟡 Built — import your lists |
 | 8 | Advertisements | ⬜ Not started |
 | 9 | Distribution (the main feature) | ⬜ Not started |
 | 10 | Campaign history | ⬜ Not started |
@@ -220,14 +220,14 @@ added free under **Custom domains**. A new `.com` costs about USD 10/year from C
 
 **Who:** Claude · **Time:** 1 hour
 
-- [ ] List, search, filter (status). **No category** — a group belongs to its profile; that is enough (decided 15/11/2026).
-- [ ] Add / edit / delete. Fields: **Name\***, **URL\***, **Status\***, Notes (optional).
-- [ ] URL check + duplicate check (the database also blocks duplicates).
-- [ ] CSV import with preview (Valid / Invalid / Duplicate) and CSV export.
+- [x] List, search, filter (status). **No category** — a group belongs to its profile; that is enough (decided 15/11/2026).
+- [x] Add / edit / delete. Fields: **Name\***, **URL\***, **Status\***, Notes (optional).
+- [x] URL check + duplicate check (the database also blocks duplicates).
+- [x] CSV import with preview (Valid / Invalid / Duplicate) and CSV export.
 
-- [ ] Groups saved **online in Supabase** (not in the browser). The old browser-only demo data is dropped — no "move my data" needed (you are preparing fresh lists).
+- [x] Groups saved **online in Supabase** (not in the browser). The old browser-only demo data is dropped — no "move my data" needed (you are preparing fresh lists).
 
-**Your prep (now):** fill `my-data/groups_NUVI_Engineering.csv` and `my-data/groups_NUVI_IT.csv` (private, git-ignored). Columns: `group_name, group_url, status, notes`. Each file is imported into the profile that is selected at the time.
+**Your prep (now):** fill `my-data/groups_NUVI_Engineering.csv` and `my-data/groups_NUVI_IT.csv` (private, git-ignored). Columns: `profile, group_name, group_url, status, notes` (`profile` = ENG / IT; empty = the selected profile).
 
 **Done when:** you import both real group lists from CSV.
 
@@ -486,6 +486,7 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 5A | Auto-deploy via GitHub Actions: `deploy.yml` (deploy + live check), `version.json` per build, "new version" Reload bar, version/build shown in app, no-cache headers. v0.5.1 |
 | 14/11/2026 | 5A | Owner created Cloudflare API token, saved `CLOUDFLARE_API_TOKEN` in GitHub secrets, disabled Cloudflare Git builds |
 | 15/11/2026 | 6B | Users & permissions built: migration 002, `admin-users` function, Users screen, invite / set-password / forgot-password flows, member restrictions. Login views tested headless. v0.6.0 (held back until the SQL is run) |
+| 15/11/2026 | 7 | v0.7.0: groups saved online (Supabase); add / edit / delete / search / status filter; CSV import with **profile** column (ENG / IT), preview (Valid / Invalid / Duplicate, per-profile counts), template download; CSV export; ↻ Refresh; categories removed; old browser demo data dropped once; "Clear browser data" replaces Reset / demo. Tested headless with a mock DB. |
 | 15/11/2026 | 7 (plan) | Group **category removed** (each group belongs to one profile — simpler). CSV columns now `group_name, group_url, status, notes`. |
 | 15/11/2026 | 6C | Profile details v0.6.1: logo (auto-resized), Facebook Page link, website, phone, WhatsApp, email, address, about, Facebook Page admins. Migration `003_profile_details.sql` run on live. Private CSV templates in `my-data/`. Step 7 will store groups online and drop the old browser demo data. |
 | 15/11/2026 | 6B | SQL run, `admin-users` function deployed, Gmail SMTP + URL Configuration set. Invite test passed (Member sees only NUVI IT). Profile tick-box layout fixed. Private `doc/ACCOUNTS_AND_SERVICES.md` added (git-ignored). Step 6B ✅ |

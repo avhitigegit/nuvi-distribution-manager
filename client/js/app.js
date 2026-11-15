@@ -34,7 +34,7 @@ const extLink = (href, text, cls = 'link') => h('a', { class: cls, href, target:
 /* ---------- App state ---------- */
 const S = {
   view: 'dashboard', params: {},
-  groupFilter: { q: '', category: '', status: '' },
+  groupFilter: { q: '', status: '' },
   dist: { adId: '', selected: new Set(), q: '' },
   navOpen: false
 };
@@ -220,6 +220,7 @@ function viewSyncing() {
       await Auth.loadAccess();
       await Store.syncProfiles();
       if (!Store.profiles().length) throw new AppError('E-AUTH-13');
+      await Store.syncGroups();
       Store.db.meta.lastAccess = { userId: uid, ...Auth.access };
       await Store.save();
     })()
@@ -382,54 +383,67 @@ function viewDashboard() {
    2. Facebook Groups  (FR-004..010, FR-030, FR-031)
    Fields: Name *, URL *, Category, Status *, Notes
    ===================================================================== */
+/* Re-reads groups from the server (other users may have changed them). */
+async function refreshGroups(quiet) {
+  try { await Store.syncGroups(); if (!quiet) toast('Groups refreshed.'); }
+  catch (e) { if (!quiet) toast(e instanceof AppError ? e.message : msg('E-SYS-01'), 'error'); return; }
+  if (S.view === 'groups' && !document.querySelector('.modal-wrap')) render();
+}
+
 function viewGroups() {
+  // Refresh in the background when the page is opened (at most every 30 s).
+  const synced = Date.parse(Store.db.meta.groupsSyncedAt || 0);
+  if (!S.groupsRefreshing && Date.now() - synced > 30000) {
+    S.groupsRefreshing = true;
+    refreshGroups(true).finally(() => { S.groupsRefreshing = false; });
+  }
   const all = Store.listGroups(biz());
   const f = S.groupFilter;
-  if (f.category && !Store.db.settings.categories.includes(f.category)) f.category = '';
+  const p = B();
   const tbody = h('tbody', {});
   const countEl = h('span', {});
 
   const drawList = () => {
     const q = f.q.trim().toLowerCase();
-    const rows = all.filter(g => (!q || g.name.toLowerCase().includes(q)) &&
-      (!f.category || g.category === f.category) && (!f.status || g.status === f.status));
-    countEl.textContent = `${rows.length} of ${all.length} groups`;
+    const rows = all.filter(g => (!q || g.name.toLowerCase().includes(q) || g.url.toLowerCase().includes(q) || g.notes.toLowerCase().includes(q)) &&
+      (!f.status || g.status === f.status));
+    const active = all.filter(g => g.status === 'ACTIVE').length;
+    countEl.textContent = `${rows.length} of ${all.length} groups · ${active} active`;
     tbody.replaceChildren(...(rows.length ? rows.map(g =>
       h('tr', { class: g.status === 'INACTIVE' ? 'dim' : '' },
-        h('td', {}, h('div', { class: 'b' }, g.name), h('a', { class: 'muted small url', href: g.url, target: '_blank', rel: 'noopener' }, g.url.replace('https://www.', ''))),
-        h('td', {}, g.category || '—'),
+        h('td', {}, profileTag(p)),
+        h('td', {}, h('div', { class: 'b' }, g.name), extLink(g.url, g.url.replace('https://www.', ''), 'muted small url')),
         h('td', {}, badge(g.status)),
         h('td', { class: 'small' }, g.notes || h('span', { class: 'muted' }, '—')),
         h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: () => groupForm(g) }, 'Edit'))))
-      : [h('tr', {}, h('td', { colspan: 5, class: 'empty-cell' }, all.length ? 'No groups match your search.' : 'No groups yet. Add one or import a CSV.'))]));
+      : [h('tr', {}, h('td', { colspan: 5, class: 'empty-cell' }, all.length ? 'No groups match your search.' : 'No groups yet. Add one, or import your CSV list.'))]));
   };
 
   let timer;
-  const sel = (key, label, options) => h('select', { onchange: e => { f[key] = e.target.value; drawList(); } },
-    h('option', { value: '' }, label), options.map(([v, t]) => h('option', { value: v, selected: f[key] === v }, t)));
-
   drawList();
   return h('div', {},
-    pageTitle('Facebook Groups', `${B().short} · group directory`,
+    pageTitle('Facebook Groups', `${p.short} · group directory · saved online`,
+      h('button', { class: 'btn', title: 'Load the latest list from the server', onclick: () => refreshGroups(false) }, '↻ Refresh'),
       h('button', { class: 'btn', onclick: csvImportDialog }, '⬆ Import CSV'),
       h('button', { class: 'btn', onclick: exportGroupsCSV }, '⬇ Export CSV'),
       h('button', { class: 'btn primary', onclick: () => groupForm() }, '+ Add group')),
     card(
       h('div', { class: 'toolbar' },
-        h('input', { type: 'search', class: 'grow', placeholder: 'Search groups by name…', value: f.q,
+        h('input', { type: 'search', class: 'grow', placeholder: 'Search by name, link or notes…', value: f.q,
           oninput: e => { f.q = e.target.value; clearTimeout(timer); timer = setTimeout(drawList, 150); } }),
-        sel('category', 'All categories', Store.db.settings.categories.map(c => [c, c])),
-        sel('status', 'Any status', [['ACTIVE', 'Active'], ['INACTIVE', 'Inactive']])),
+        h('select', { onchange: e => { f.status = e.target.value; drawList(); } },
+          [['', 'Any status'], ['ACTIVE', 'Active'], ['INACTIVE', 'Inactive']].map(([v, t]) => h('option', { value: v, selected: f.status === v }, t)))),
       h('div', { class: 'muted small mb' }, countEl),
       h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Group'), h('th', {}, 'Category'), h('th', {}, 'Status'), h('th', {}, 'Notes'), h('th', {}))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Profile'), h('th', {}, 'Group'), h('th', {}, 'Status'), h('th', {}, 'Notes'), h('th', {}))),
         tbody))));
 }
 
 function groupForm(g) {
   const edit = !!g;
-  const state = { v: g ? { ...g } : { businessId: biz(), name: '', url: '', category: '', status: 'ACTIVE', notes: '' } };
+  const state = { v: g ? { ...g } : { businessId: biz(), name: '', url: '', status: 'ACTIVE', notes: '' } };
   const v = state.v;
+  const prof = Store.profile(v.businessId);
   const touched = {}, errEls = {};
   const saveBtn = h('button', { class: 'btn primary' }, 'Save');
   state.check = () => {
@@ -440,24 +454,21 @@ function groupForm(g) {
   const opt = { touched, errEls };
 
   const body = h('div', {},
-    h('div', { class: 'muted small mb' }, 'Profile: ', h('b', {}, B().short)),
+    h('div', { class: 'row gap mb' }, h('span', { class: 'muted small' }, 'Profile:'), profileTag(prof), h('b', {}, prof.short)),
     makeField(state, 'name', 'Group name *', h('input', { value: v.name, maxlength: LIMITS.groupName, placeholder: 'Kiriwaththuduwa Api' }), opt),
     makeField(state, 'url', 'Group URL *', h('input', { value: v.url, placeholder: 'https://www.facebook.com/groups/233212924715137/' }), { ...opt, hint: 'Must be a facebook.com/groups/… link' }),
-    h('div', { class: 'grid2' },
-      h('label', { class: 'field' }, h('span', {}, 'Status *'),
-        h('select', { onchange: e => { v.status = e.target.value; } },
-          h('option', { value: 'ACTIVE', selected: v.status === 'ACTIVE' }, 'Active'),
-          h('option', { value: 'INACTIVE', selected: v.status === 'INACTIVE' }, 'Inactive'))),
-      h('label', { class: 'field' }, h('span', {}, 'Category (optional)'),
-        h('select', { onchange: e => { v.category = e.target.value; } },
-          h('option', { value: '' }, '— None —'),
-          Store.db.settings.categories.map(c => h('option', { value: c, selected: c === v.category }, c))))),
+    h('label', { class: 'field' }, h('span', {}, 'Status *'),
+      h('select', { onchange: e => { v.status = e.target.value; } },
+        h('option', { value: 'ACTIVE', selected: v.status === 'ACTIVE' }, 'Active — shown for distribution'),
+        h('option', { value: 'INACTIVE', selected: v.status === 'INACTIVE' }, 'Inactive — kept, but not used'))),
     makeField(state, 'notes', 'Notes (optional)', h('textarea', { rows: 3, maxlength: LIMITS.notes, placeholder: 'e.g. No shares, post the link only' }, v.notes), opt));
 
   saveBtn.onclick = () => act(async () => {
     Object.keys(errEls).forEach(k => touched[k] = true); state.check();
     if (saveBtn.disabled) return;
-    await Store.saveGroup(v); m.close(); toast(edit ? 'Group updated.' : 'Group added.'); render();
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try { await Store.saveGroup(v); } finally { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    m.close(); toast(edit ? 'Group updated.' : 'Group added.'); render();
   });
 
   const m = modal(edit ? 'Edit group' : 'Add group', body, [
@@ -471,7 +482,33 @@ function groupForm(g) {
   state.check();
 }
 
+/* Empty CSV with the right columns and one example row. */
+function downloadGroupsTemplate() {
+  const p = B();
+  const lines = [CSV_COLUMNS.join(','), [p.tag, 'Example Group (delete this row)', 'https://www.facebook.com/groups/123456789012345', 'ACTIVE', 'Allows business pages'].map(csvEscape).join(',')];
+  download(`nuvi-groups-template-${p.tag.toLowerCase()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+}
+
 async function csvImportDialog() {
+  const p = B();
+  const intro = h('div', {},
+    h('p', {}, 'Choose a CSV file (Excel → Save As → "CSV UTF-8"). Columns:'),
+    h('div', { class: 'table-wrap mb' }, h('table', { class: 'tbl' },
+      h('thead', {}, h('tr', {}, CSV_COLUMNS.map(c => h('th', {}, c)))),
+      h('tbody', {}, h('tr', {}, h('td', {}, p.tag), h('td', {}, 'Homagama Api'), h('td', { class: 'small' }, 'https://www.facebook.com/groups/…'), h('td', {}, 'ACTIVE'), h('td', {}, 'Post link only'))))),
+    h('ul', { class: 'muted small' },
+      h('li', {}, h('b', {}, 'profile'), ` — the profile tag (${Store.profiles().map(x => x.tag).join(', ')}). Empty = ${p.short} (selected now).`),
+      h('li', {}, h('b', {}, 'group_name'), ' and ', h('b', {}, 'group_url'), ' are required.'),
+      h('li', {}, h('b', {}, 'status'), ' — ACTIVE or INACTIVE (empty = ACTIVE). ', h('b', {}, 'notes'), ' — optional.'),
+      h('li', {}, 'Groups already in the profile are skipped (no duplicates).')));
+  const m0 = modal('Import groups from CSV', intro, [
+    h('button', { class: 'btn', onclick: downloadGroupsTemplate }, '⬇ Download template'),
+    h('span', { class: 'grow' }),
+    h('button', { class: 'btn', onclick: () => m0.close() }, 'Cancel'),
+    h('button', { class: 'btn primary', onclick: async () => { m0.close(); await csvPreview(); } }, 'Choose file…')], true);
+}
+
+async function csvPreview() {
   const file = await pickFile('.csv,text/csv');
   if (!file) return;
   const text = await file.text();
@@ -479,30 +516,43 @@ async function csvImportDialog() {
   try { rows = previewCSV(text, biz()); } catch (e) { toast(e.message, 'error'); return; }
   const valid = rows.filter(r => r.result === 'VALID');
   const n = k => rows.filter(r => r.result === k).length;
+  const per = {};
+  valid.forEach(r => { per[r.data.businessId] = (per[r.data.businessId] || 0) + 1; });
+  const filter = { v: '' };
+  const tbody = h('tbody', {});
+  const draw = () => tbody.replaceChildren(...rows.filter(r => !filter.v || r.result === filter.v).map(r => h('tr', {},
+    h('td', {}, r.line),
+    h('td', {}, r.data.businessId ? profileTag(Store.profile(r.data.businessId)) : h('span', { class: 'muted' }, r.data.profileText || '—')),
+    h('td', {}, r.data.name || '—', h('div', { class: 'muted small url' }, r.data.url)),
+    h('td', {}, h('b', { class: 'r-' + r.result }, r.result), r.reason ? h('div', { class: 'muted small' }, r.reason) : null))));
+  draw();
+  const chip = (k, label, color) => h('button', { type: 'button', class: 'badge', style: `--c:${color};cursor:pointer`, title: 'Show only these',
+    onclick: () => { filter.v = filter.v === k ? '' : k; draw(); } }, `${label} ${n(k)}`);
   const body = h('div', {},
-    h('p', { class: 'small' }, `File: ${file.name} → ${B().short}`),
-    h('p', { class: 'muted small' }, 'Columns: group_name, group_url, category (optional), status (optional), notes (optional)'),
-    h('div', { class: 'row gap mb' },
-      h('span', { class: 'badge', style: '--c:#15803d' }, `Valid ${n('VALID')}`),
-      h('span', { class: 'badge', style: '--c:#b91c1c' }, `Invalid ${n('INVALID')}`),
-      h('span', { class: 'badge', style: '--c:#d97706' }, `Duplicate ${n('DUPLICATE')}`)),
+    h('p', { class: 'small' }, `File: ${file.name}`),
+    h('div', { class: 'row gap wrap mb' }, chip('VALID', 'Valid', '#15803d'), chip('INVALID', 'Invalid', '#b91c1c'), chip('DUPLICATE', 'Duplicate', '#d97706')),
+    valid.length ? h('p', { class: 'small' }, 'Will be added: ', Object.entries(per).map(([b, c], i) =>
+      h('span', {}, i ? ', ' : '', h('b', {}, `${c}`), ` to ${Store.profile(b).short}`))) : null,
     h('div', { class: 'table-wrap tall' }, h('table', { class: 'tbl' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Line'), h('th', {}, 'Group'), h('th', {}, 'Result'))),
-      h('tbody', {}, rows.map(r => h('tr', {},
-        h('td', {}, r.line), h('td', {}, r.data.name || '—', h('div', { class: 'muted small url' }, r.data.url)),
-        h('td', {}, h('b', { class: 'r-' + r.result }, r.result), r.reason ? h('div', { class: 'muted small' }, r.reason) : null)))))));
-  const m = modal('Import groups from CSV', body, [
-    h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'),
-    h('button', { class: 'btn primary', disabled: !valid.length, onclick: () => act(async () => {
-      const res = await Store.importGroups(biz(), valid.map(r => r.data));
+      h('thead', {}, h('tr', {}, h('th', {}, 'Line'), h('th', {}, 'Profile'), h('th', {}, 'Group'), h('th', {}, 'Result'))),
+      tbody)));
+  const goBtn = h('button', { class: 'btn primary', disabled: !valid.length }, `Import ${valid.length} groups`);
+  goBtn.onclick = () => act(async () => {
+    goBtn.disabled = true; goBtn.textContent = 'Importing…';
+    try {
+      const res = await Store.importGroups(valid.map(r => r.data));
       m.close(); toast(`${res.added} groups imported. ${rows.length - res.added} rows skipped.`); render();
-    }) }, `Import ${valid.length} groups`)], true);
+    } finally { goBtn.disabled = false; goBtn.textContent = `Import ${valid.length} groups`; }
+  });
+  const m = modal('Import groups — check before saving', body, [
+    h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'), goBtn], true);
 }
 
 function exportGroupsCSV() {
-  const lines = [CSV_COLUMNS.join(',')].concat(Store.listGroups(biz()).map(g =>
-    [g.name, g.url, g.category, g.status === 'ACTIVE' ? 'Active' : 'Inactive', g.notes].map(csvEscape).join(',')));
-  download(`nuvi-groups-${B().tag.toLowerCase()}-${todayStamp()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  const p = B();
+  const lines = [CSV_COLUMNS.join(',')].concat(Store.listGroups(p.id).map(g =>
+    [p.tag, g.name, g.url, g.status, g.notes].map(csvEscape).join(',')));
+  download(`nuvi-groups-${p.tag.toLowerCase()}-${todayStamp()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   toast('Groups exported.');
 }
 
@@ -616,7 +666,7 @@ function viewDistribute() {
         onchange: e => { e.target.checked ? d.selected.add(g.id) : d.selected.delete(g.id); refresh(); } });
       return h('label', { class: 'list-row check' + (inactive ? ' dim' : '') }, cb,
         h('div', { class: 'grow' }, h('div', { class: 'b' }, g.name),
-          h('div', { class: 'muted small' }, [g.category, inactive ? 'Inactive' : ''].filter(Boolean).join(' · ') || ' '),
+          h('div', { class: 'muted small' }, [g.notes, inactive ? 'Inactive' : ''].filter(Boolean).join(' · ') || ' '),
           pub ? h('div', { class: 'chip ok' }, `✓ already ${pub.status === 'PUBLISHED' ? 'published' : 'approval required'} · ${fmtDate(pub.at)}`) : null,
           recent ? h('div', { class: 'chip warn' }, `⏱ posted ${fmtDate(last)} (within ${warnDays} days)`) : null));
     }));
@@ -703,7 +753,7 @@ function viewProgress(st) {
         h('section', { class: 'card current' },
           h('div', { class: 'row between' }, h('div', { class: 'muted small' }, 'Current group'), h('div', { class: 'pos' }, `${cur.index + 1} / ${cur.total}`)),
           h('div', { class: 'cur-name' }, cur.groupName),
-          cur.category ? h('div', { class: 'muted small' }, cur.category) : null,
+          cur.notes ? h('div', { class: 'muted small' }, cur.notes) : null,
           cur.notes ? h('div', { class: 'note' }, '📝 Note: ', cur.notes) : null,
           h('div', { class: 'row gap wrap mt' },
             h('button', { class: 'btn sm', onclick: () => act(() => Engine.navigate(cur.groupUrl)) }, '↻ Open group tab'),
@@ -1129,14 +1179,9 @@ function changePasswordForm() {
 /* --- Lists & posting gap --- */
 function settingsLists() {
   const s = Store.db.settings;
-  const cats = h('textarea', { rows: 7 }, s.categories.join('\n'));
   const num = (v, min) => h('input', { type: 'number', min, value: v });
   const gap = num(s.postingGapSeconds, 0), recent = num(s.recentPostWarningDays, 0), remind = num(s.backupReminderDays, 1);
-  const lines = ta => [...new Set(ta.value.split('\n').map(x => x.trim()).filter(Boolean))];
   const save = () => act(async () => {
-    const c = lines(cats);
-    if (!c.includes('Other')) c.push('Other');
-    s.categories = c;
     s.postingGapSeconds = Math.max(0, +gap.value || 0);
     s.recentPostWarningDays = Math.max(0, +recent.value || 0);
     s.backupReminderDays = Math.max(1, +remind.value || 7);
@@ -1144,9 +1189,6 @@ function settingsLists() {
   });
   return h('div', {},
     h('div', { class: 'two' },
-      card(h('h3', {}, 'Group categories'),
-        h('p', { class: 'muted small' }, 'Keep it short — only main categories. One per line. Category is optional on a group.'),
-        cats),
       card(h('h3', {}, 'Posting gap (avoid Facebook spam limits)'),
         h('label', { class: 'field' }, h('span', {}, 'Minimum wait between groups, seconds (0 = off)'), gap),
         h('label', { class: 'field' }, h('span', {}, 'Warn if a group got any NUVI ad within N days (0 = off)'), recent),
@@ -1160,16 +1202,15 @@ function settingsBackup() {
   const last = Store.db.meta.lastBackupAt;
   return h('div', { class: 'two' },
     card(h('h3', {}, 'Backup & restore'),
-      h('p', { class: 'muted small' }, 'All data lives only in this browser. Uninstalling the extension or clearing browser data deletes it — back up first. User logins are not included in the backup.'),
+      h('p', { class: 'muted small' }, 'Profiles, users and Facebook groups are saved online. Advertisements and campaigns are still kept in this browser until the next updates — back up to keep a copy. User logins are not included.'),
       h('div', { class: 'muted small mb' }, 'Last backup: ', h('b', {}, last ? fmtDateTime(last) : 'never')),
       h('div', { class: 'row gap wrap' },
         h('button', { class: 'btn primary', onclick: doBackup }, '⬇ Back up now'),
         h('button', { class: 'btn', onclick: doRestore }, '⬆ Restore backup'))),
     card(h('h3', {}, 'Danger zone'),
-      h('p', { class: 'muted small' }, 'Reset deletes the groups, advertisements and campaigns of every profile. Your login is not affected.'),
+      h('p', { class: 'muted small' }, 'Clears the advertisements and campaigns kept in this browser. Online data (profiles, users, groups) is not touched.'),
       h('div', { class: 'row gap wrap' },
-        h('button', { class: 'btn danger-ghost', onclick: () => resetData(false) }, 'Reset all data'),
-        h('button', { class: 'btn', onclick: () => resetData(true) }, 'Reload demo data')),
+        h('button', { class: 'btn danger-ghost', onclick: resetData }, 'Clear browser data')),
       h('p', { class: 'muted small mt' }, `Version ${Updates.label()} · storage: ${HAS_CHROME_STORAGE ? 'chrome.storage.local' : 'browser localStorage'}`)));
 }
 
@@ -1193,12 +1234,10 @@ async function doRestore() {
   act(async () => { await Store.importAll(obj); toast('Backup restored.'); go('dashboard'); });
 }
 
-async function resetData(withDemo) {
-  if (!withDemo) {
-    if (!await confirmBox('Reset ALL data? Groups, advertisements and campaigns of every profile will be deleted.', 'Continue', true)) return;
-    if (!await confirmBox('Are you absolutely sure? This cannot be undone.', 'Reset everything', true)) return;
-  } else if (!await confirmBox('Replace current data with the demo data?', 'Load demo')) return;
-  act(async () => { await Store.resetAll(withDemo); toast(withDemo ? 'Demo data loaded.' : 'All data reset.'); go('dashboard'); });
+async function resetData() {
+  if (!await confirmBox('Clear the advertisements and campaigns kept in this browser? Online groups are not touched.', 'Continue', true)) return;
+  if (!await confirmBox('Are you sure? This cannot be undone.', 'Clear', true)) return;
+  act(async () => { await Store.resetLocal(); toast('Browser data cleared.'); go('dashboard'); });
 }
 
 /* ---------- Boot ---------- */

@@ -35,8 +35,8 @@ const STATUS = {
 
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
-const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.6.1';
+const SCHEMA_VERSION = 3;
+const APP_VERSION = '0.7.0';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
                  csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6,
                  about: 1000, contact: 120, pageAdmins: 20, logoPx: 256 };
@@ -99,7 +99,7 @@ const MESSAGES = {
   'E-NET-02': 'The app is not connected to Supabase. Check js/config.js.',
   'E-SYS-01': 'Something went wrong. Please try again.',
   'E-SAVE-01': 'Could not save. Please try again.',
-  'W-CAT-01': 'Unknown category "{value}", saved as Other.',
+  'E-CSV-03': 'Unknown profile "{value}". Use the profile tag ({tags}).',
   'C-DEL-01': 'Delete "{name}"? This cannot be undone.',
   'C-STOP-01': 'Stop this distribution? Remaining groups stay Pending, and you can resume later from History.',
   'C-RST-01': 'Replace ALL current data with this backup?',
@@ -200,7 +200,7 @@ function errText(code, field) {
 }
 
 /* ---------- CSV (Tech Doc §06, simplified columns) ---------- */
-const CSV_COLUMNS = ['group_name', 'group_url', 'category', 'status', 'notes'];
+const CSV_COLUMNS = ['profile', 'group_name', 'group_url', 'status', 'notes'];
 
 function parseCSV(text) {
   text = text.replace(/^﻿/, '');
@@ -226,7 +226,9 @@ function csvEscape(v) {
   return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 
-/** Validates CSV text for one profile. Returns [{line, data, result, reason}] or throws. */
+/** Validates CSV text. The optional "profile" column (tag, e.g. ENG / IT, or short
+    name) says which profile each group belongs to; empty = the selected profile.
+    Returns [{line, data, result, reason}] or throws. */
 function previewCSV(text, businessId) {
   if (text.length > 1024 * 1024) throw new AppError('E-CSV-02');
   const all = parseCSV(text);
@@ -237,24 +239,28 @@ function previewCSV(text, businessId) {
   const body = all.slice(1);
   if (body.length > LIMITS.csvRows) throw new AppError('E-CSV-02');
 
-  const existing = new Set(Object.values(Store.db.groups).filter(g => g.businessId === businessId).map(g => g.urlKey));
+  const profs = Store.profiles();
+  const key = x => (x || '').trim().toLowerCase();
+  const findProfile = v => profs.find(p => key(p.tag) === key(v) || key(p.short) === key(v) || key(p.name) === key(v));
+  const tags = profs.map(p => p.tag).join(', ');
+  const existing = new Set(Object.values(Store.db.groups).map(g => g.businessId + '|' + g.urlKey));
   const seen = new Set();
-  const cats = Store.db.settings.categories;
   return body.map((r, i) => {
     const get = c => (idx[c] >= 0 ? (r[idx[c]] || '').trim() : '');
-    const data = { name: get('group_name'), url: get('group_url'), category: get('category'), status: get('status'), notes: get('notes') };
+    const data = { profileText: get('profile'), name: get('group_name'), url: get('group_url'), status: get('status'), notes: get('notes') };
     const out = { line: i + 2, data, result: 'VALID', reason: '' };
+    const prof = data.profileText ? findProfile(data.profileText) : Store.db.businesses[businessId];
+    if (!prof) { out.result = 'INVALID'; out.reason = msg('E-CSV-03', { value: data.profileText, tags }); return out; }
+    data.businessId = prof.id;
     if (!data.name || !data.url) { out.result = 'INVALID'; out.reason = 'Missing name or URL'; return out; }
     if (data.name.length > LIMITS.groupName || data.notes.length > LIMITS.notes) { out.result = 'INVALID'; out.reason = 'Too long'; return out; }
     const p = parseGroupUrl(data.url);
     if (!p.ok) { out.result = 'INVALID'; out.reason = 'Not a Facebook group link'; return out; }
-    if (existing.has(p.urlKey)) { out.result = 'DUPLICATE'; out.reason = 'Already in this profile'; return out; }
-    if (seen.has(p.urlKey)) { out.result = 'DUPLICATE'; out.reason = 'Repeated in this file'; return out; }
-    seen.add(p.urlKey);
+    const k = prof.id + '|' + p.urlKey;
+    if (existing.has(k)) { out.result = 'DUPLICATE'; out.reason = `Already in ${prof.short}`; return out; }
+    if (seen.has(k)) { out.result = 'DUPLICATE'; out.reason = 'Repeated in this file'; return out; }
+    seen.add(k);
     data.status = data.status.toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    const match = cats.find(c => c.toLowerCase() === data.category.toLowerCase());
-    if (data.category && !match) { out.reason = msg('W-CAT-01', { value: data.category }); data.category = 'Other'; }
-    else data.category = match || 'Other';
     return out;
   });
 }
@@ -281,6 +287,12 @@ function migrate(db) {
     db.meta.counters.business = db.meta.counters.business || Object.keys(db.businesses).length;
     db.meta.schemaVersion = 2;
   }
+  if (db.meta.schemaVersion < 3) {
+    // v2 -> v3 (Step 7): groups are stored online in Supabase. The old
+    // browser-only groups / ads / campaigns (mostly demo data) are dropped.
+    db.groups = {}; db.ads = {}; db.campaigns = {}; db.session = null;
+    db.meta.schemaVersion = 3;
+  }
   return db;
 }
 
@@ -299,7 +311,7 @@ const Store = {
       else data = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
     } catch { data = {}; }
     const isNew = !data.meta;
-    this.db = isNew ? seedData() : migrate(data);
+    this.db = isNew ? emptyData() : migrate(data);
     this.db.users = data.users || {};
     this.db.settings = { ...structuredClone(DEFAULT_SETTINGS), ...this.db.settings };
     if (!this.db.businesses[this.db.meta.lastBusinessId]) this.db.meta.lastBusinessId = this.profiles()[0].id;
@@ -416,7 +428,31 @@ const Store = {
     await this.syncProfiles();
   },
 
-  /* Groups */
+  /* Groups — stored in Supabase (Step 7). Store.db.groups is a local copy
+     (all groups of the profiles this user may use), refreshed by syncGroups(). */
+  _group(r) {
+    return { id: String(r.id), businessId: String(r.profile_id), name: r.name, url: r.url, urlKey: r.url_key,
+             status: r.status, notes: r.notes || '', createdAt: r.created_at, updatedAt: r.updated_at };
+  },
+  _groupFail(error) {
+    if (error && error.code === '23505') throw new AppError('E-DUP-01', { name: 'another group' });
+    this._dbFail(error);
+  },
+  async syncGroups() {
+    const all = [], page = 1000;
+    for (let from = 0; ; from += page) {
+      const { data, error } = await DB.client.from('groups')
+        .select('id, profile_id, name, url, url_key, status, notes, created_at, updated_at')
+        .order('id').range(from, from + page - 1);
+      if (error) this._dbFail(error);
+      all.push(...data);
+      if (data.length < page) break;
+    }
+    this.db.groups = {};
+    all.forEach(r => { const g = this._group(r); this.db.groups[g.id] = g; });
+    this.db.meta.groupsSyncedAt = new Date().toISOString();
+    await this.save();
+  },
   listGroups(biz) {
     return Object.values(this.db.groups).filter(g => g.businessId === biz)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -427,27 +463,43 @@ const Store = {
     if (first) throw new AppError(errs[first].split(':')[0], { name: errs[first].split(':')[1] });
     if (!input.id && this.listGroups(input.businessId).length >= LIMITS.groupsPerBusiness) throw new AppError('E-LIM-01');
     const p = parseGroupUrl(input.url);
-    const now = new Date().toISOString();
-    const g = { ...(this.db.groups[input.id] || {}),
-      businessId: input.businessId, name: input.name.trim(), url: p.url, urlKey: p.urlKey,
-      category: input.category || 'Other', status: input.status || 'ACTIVE', notes: (input.notes || '').trim(),
-      id: input.id || this.nextId('group'), updatedAt: now };
-    g.createdAt = g.createdAt || now;
+    const row = { profile_id: Number(input.businessId), name: input.name.trim(), url: p.url, url_key: p.urlKey,
+                  status: input.status || 'ACTIVE', notes: (input.notes || '').trim() || null };
+    const cols = 'id, profile_id, name, url, url_key, status, notes, created_at, updated_at';
+    const res = input.id
+      ? await DB.client.from('groups').update({ ...row, updated_at: new Date().toISOString() }).eq('id', Number(input.id)).select(cols).single()
+      : await DB.client.from('groups').insert(row).select(cols).single();
+    if (res.error) this._groupFail(res.error);
+    const g = this._group(res.data);
     this.db.groups[g.id] = g;
     await this.save();
     return g;
   },
-  async deleteGroup(id) { delete this.db.groups[id]; await this.save(); },
-  async importGroups(biz, rows) {
-    const now = new Date().toISOString();
-    rows.forEach(d => {
-      const p = parseGroupUrl(d.url);
-      const id = this.nextId('group');
-      this.db.groups[id] = { id, businessId: biz, name: d.name, url: p.url, urlKey: p.urlKey,
-        category: d.category, status: d.status, notes: d.notes, createdAt: now, updatedAt: now };
-    });
+  async deleteGroup(id) {
+    const { error } = await DB.client.from('groups').delete().eq('id', Number(id));
+    if (error) this._groupFail(error);
+    delete this.db.groups[id];
     await this.save();
-    return { added: rows.length };
+  },
+  /* rows: [{ businessId, name, url, status, notes }] — the VALID rows from previewCSV. */
+  async importGroups(rows) {
+    const per = {};
+    rows.forEach(d => { per[d.businessId] = (per[d.businessId] || 0) + 1; });
+    Object.entries(per).forEach(([b, n]) => {
+      if (this.listGroups(b).length + n > LIMITS.groupsPerBusiness) throw new AppError('E-LIM-01');
+    });
+    const list = rows.map(d => { const p = parseGroupUrl(d.url);
+      return { profile_id: Number(d.businessId), name: d.name.trim(), url: p.url, url_key: p.urlKey,
+               status: d.status, notes: (d.notes || '').trim() || null }; });
+    let added = 0;
+    try {
+      for (let i = 0; i < list.length; i += 200) {
+        const { error } = await DB.client.from('groups').insert(list.slice(i, i + 200));
+        if (error) this._groupFail(error);
+        added += Math.min(200, list.length - i);
+      }
+    } finally { await this.syncGroups(); }
+    return { added, perProfile: per };
   },
 
   /* Advertisements */
@@ -523,13 +575,19 @@ const Store = {
     this.db.settings = { ...structuredClone(DEFAULT_SETTINGS), ...this.db.settings };
     await this.save();
     await this.syncProfiles();
+    await this.syncGroups();   // groups always come from the online database
   },
-  async resetAll(withDemo) {
-    const users = this.db.users;
-    this.db = withDemo ? seedData() : emptyData();
-    this.db.users = users;
+  /* Clears what is kept only in this browser (advertisements, campaigns).
+     Online data (profiles, groups) is not touched. */
+  async resetLocal() {
+    const keep = { users: this.db.users, businesses: this.db.businesses,
+                   lastAccess: this.db.meta.lastAccess, lastBusinessId: this.db.meta.lastBusinessId };
+    this.db = emptyData();
+    Object.assign(this.db, { users: keep.users, businesses: keep.businesses });
+    Object.assign(this.db.meta, { lastAccess: keep.lastAccess, lastBusinessId: keep.lastBusinessId });
     await this.save();
     await this.syncProfiles();
+    await this.syncGroups();
   }
 };
 
