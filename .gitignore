@@ -30,3 +30,6 @@ client/version.json
 .wrangler/
 
 server/supabase/.temp/
+
+# Private: account & service details (stays on this PC)
+doc/ACCOUNTS_AND_SERVICES.md
