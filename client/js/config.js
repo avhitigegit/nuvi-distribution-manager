@@ -3,5 +3,7 @@
 // Data is protected by login + Row Level Security, not by hiding this key.
 window.NUVI_CONFIG = {
   SUPABASE_URL: 'https://yuwvfgnytetrzfqjqdjx.supabase.co',
-  SUPABASE_KEY: 'sb_publishable_3mkFYV4ZcldSJsuM_QlzoA_56VOmW8w'
+  SUPABASE_KEY: 'sb_publishable_3mkFYV4ZcldSJsuM_QlzoA_56VOmW8w',
+  // Website address used in invite / reset-password emails
+  SITE_URL: 'https://nuvi-distribution-manager.nuviengineering.workers.dev/'
 };

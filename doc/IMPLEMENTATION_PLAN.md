@@ -19,6 +19,7 @@
 | 5 | Login screen | ✅ Done |
 | 5A | Publish as a website (Cloudflare) | ✅ Done |
 | 6 | Profiles | ✅ Done |
+| 6B | Users & permissions (Admin / Member) | 🟡 Built — your setup steps |
 | 7 | Facebook groups (+ CSV) | ⬜ Not started |
 | 8 | Advertisements | ⬜ Not started |
 | 9 | Distribution (the main feature) | ⬜ Not started |
@@ -190,6 +191,28 @@ added free under **Custom domains**. A new `.com` costs about USD 10/year from C
 - [x] Delete is allowed only if the profile has no groups, ads or campaigns.
 
 **Done when:** you add "NUVI Test" and it appears in the sidebar, and still appears after a reload.
+
+---
+
+## Step 6B — Users & permissions
+
+**Who:** Claude builds, you do 5 setup steps · **Time:** about 20 min for you · **Cost:** free
+
+- **Admin** (you): every profile; manages users, profiles, settings, backups.
+- **Member**: only the profiles the admin ticks; cannot manage users, profiles, settings or backups.
+- The database enforces this (Row Level Security), not just the screens.
+- New users get an **invite email** and choose their own password. Everyone gets **"Forgot password?"**.
+
+- [x] `server/migrations/002_users_and_permissions.sql`: `app_users` table, `is_admin()` / `can_use_profile()`, new rules on every table, one running campaign **per user**, anon gets nothing.
+- [x] Server function `admin-users` (list / invite / update / block / resend / delete; admin-only; service key stays on the server).
+- [x] App: Settings → **Users** (admin), Invite / Edit / Block / Resend / Delete; **Choose your password** page; **Forgot password?**; admin-only menus hidden for members; expired-link message.
+- [ ] You: run the SQL migration.
+- [ ] You: `! npx supabase login` → Claude deploys the function.
+- [ ] You: Supabase email (SMTP) with a Gmail App Password.
+- [ ] You: Supabase URL Configuration (Site URL + Redirect URL).
+- [ ] You: test — invite a second email as Member of one profile.
+
+**Done when:** a member signs in from the invite email and sees only their profile.
 
 ---
 
@@ -458,3 +481,4 @@ select id, short_name, tag from profiles order by sort_order;
 | 14/11/2026 | 6 | Tested by owner on the website: add / edit / delete profile, Supabase table updated |
 | 14/11/2026 | 5A | Auto-deploy via GitHub Actions: `deploy.yml` (deploy + live check), `version.json` per build, "new version" Reload bar, version/build shown in app, no-cache headers. v0.5.1 |
 | 14/11/2026 | 5A | Owner created Cloudflare API token, saved `CLOUDFLARE_API_TOKEN` in GitHub secrets, disabled Cloudflare Git builds |
+| 15/11/2026 | 6B | Users & permissions built: migration 002, `admin-users` function, Users screen, invite / set-password / forgot-password flows, member restrictions. Login views tested headless. v0.6.0 (held back until the SQL is run) |

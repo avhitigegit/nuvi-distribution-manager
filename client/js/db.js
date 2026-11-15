@@ -16,6 +16,15 @@ const DB = (() => {
       }
     : window.localStorage;
 
+  // Email links (invite / reset password) return to the website with the
+  // result in the address (#access_token=...&type=invite, or #error=...).
+  // Read it before the Supabase client consumes and clears it.
+  const isWeb = location.protocol === 'https:' || location.protocol === 'http:';
+  const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  const linkType = isWeb ? (hash.get('type') || '') : '';
+  const linkError = isWeb && hash.get('error') ? (hash.get('error_description') || hash.get('error')).replace(/\+/g, ' ') : '';
+  if (linkError) history.replaceState(null, '', location.pathname + location.search);
+
   let client = null;
   let problem = '';
   if (!lib || !lib.createClient) problem = 'lib/supabase.js did not load.';
@@ -23,7 +32,7 @@ const DB = (() => {
   else if (/service_role|sb_secret_/.test(cfg.SUPABASE_KEY)) problem = 'config.js holds a secret key. Use the publishable (anon) key only.';
   else {
     client = lib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, {
-      auth: { storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+      auth: { storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: isWeb, flowType: 'implicit' }
     });
   }
 
@@ -43,5 +52,8 @@ const DB = (() => {
     }
   }
 
-  return { client, problem, ping, ready: ping() };
+  // Address the email links send people back to (the website).
+  const siteUrl = isWeb ? location.origin + '/' : ((cfg && cfg.SITE_URL) || '');
+
+  return { client, problem, ping, ready: ping(), linkType, linkError, siteUrl, isWeb };
 })();

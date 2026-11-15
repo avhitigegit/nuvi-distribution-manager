@@ -1,0 +1,7 @@
+# Supabase CLI settings (used only to deploy the server function).
+# Deploy:  npx supabase functions deploy admin-users --project-ref yuwvfgnytetrzfqjqdjx --workdir server --use-api
+project_id = "yuwvfgnytetrzfqjqdjx"
+
+[functions.admin-users]
+# The function checks the caller's login token itself (and that they are an ADMIN).
+verify_jwt = false

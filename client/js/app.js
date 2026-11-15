@@ -116,10 +116,11 @@ function makeField(state, key, label, input, { hint, touched, errEls } = {}) {
    Login screen
    ===================================================================== */
 function viewLogin() {
+  if (S.forgot) return viewForgot();
   const v = { email: '', password: '' };
-  const err = h('div', { class: 'err center' }, DB.client ? '' : msg('E-NET-02'));
+  const err = h('div', { class: 'err center' }, !DB.client ? msg('E-NET-02') : (S.linkError || ''));
   const btn = h('button', { class: 'btn primary block big', type: 'submit' }, 'Sign in');
-  const inp = (key, attrs) => h('input', { ...attrs, oninput: e => { v[key] = e.target.value; err.textContent = ''; } });
+  const inp = (key, attrs) => h('input', { ...attrs, oninput: e => { v[key] = e.target.value; err.textContent = ''; S.linkError = ''; } });
 
   const submit = async e => {
     e.preventDefault();
@@ -141,21 +142,89 @@ function viewLogin() {
       h('label', { class: 'field' }, h('span', {}, 'Email'), inp('email', { type: 'email', autocomplete: 'username', autofocus: true })),
       h('label', { class: 'field' }, h('span', {}, 'Password'), inp('password', { type: 'password', autocomplete: 'current-password' })),
       err, btn,
-      h('p', { class: 'muted small center' }, Updates.label()),
-      h('p', { class: 'muted small center' }, 'Accounts are added by the owner in the Supabase dashboard. Forgot your password? The owner can reset it there.')));
+      h('p', { class: 'center mt' }, h('button', { type: 'button', class: 'link', onclick: () => { S.forgot = true; render(); } }, 'Forgot password?')),
+      h('p', { class: 'muted small center' }, 'New users are invited by an admin and receive an email to set their password.'),
+      h('p', { class: 'muted small center' }, Updates.label())));
 }
 
-/* Loads shared data from Supabase after sign-in. If the network fails but
-   profiles were loaded before, the saved copy is used. */
+/* "Forgot password?" — sends an email with a link to set a new password. */
+function viewForgot() {
+  let email = '';
+  const err = h('div', { class: 'err center' });
+  const btn = h('button', { class: 'btn primary block big', type: 'submit' }, 'Send reset link');
+  const submit = async e => {
+    e.preventDefault();
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      await Auth.forgotPassword(email);
+      S.forgot = false; render();
+      toast('If this email has an account, a reset link has been sent. Check your inbox (and spam).');
+    } catch (ex) {
+      err.textContent = ex instanceof AppError ? ex.message : msg('E-SYS-01');
+      btn.disabled = false; btn.textContent = 'Send reset link';
+    }
+  };
+  return h('div', { class: 'login-page' },
+    h('form', { class: 'login-card', onsubmit: submit },
+      h('div', { class: 'login-logo' }, 'N'),
+      h('h1', {}, 'Reset your password'),
+      h('p', { class: 'muted center' }, 'Enter your email. We will send you a link to choose a new password.'),
+      h('label', { class: 'field' }, h('span', {}, 'Email'),
+        h('input', { type: 'email', autocomplete: 'username', autofocus: true, oninput: e => { email = e.target.value; err.textContent = ''; } })),
+      err, btn,
+      h('p', { class: 'center mt' }, h('button', { type: 'button', class: 'link', onclick: () => { S.forgot = false; render(); } }, '‹ Back to sign in'))));
+}
+
+/* After clicking an invite / reset email link: choose a password. */
+function viewSetPassword() {
+  const v = { next: '', confirm: '' };
+  const err = h('div', { class: 'err center' });
+  const btn = h('button', { class: 'btn primary block big', type: 'submit' }, 'Save password');
+  const inp = key => h('input', { type: 'password', autocomplete: 'new-password', oninput: e => { v[key] = e.target.value; err.textContent = ''; } });
+  const submit = async e => {
+    e.preventDefault();
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      await Auth.setPassword(v.next, v.confirm);
+      toast('Password saved. Welcome!');
+      S.view = 'dashboard'; render();
+    } catch (ex) {
+      err.textContent = ex instanceof AppError ? ex.message : msg('E-SYS-01');
+      btn.disabled = false; btn.textContent = 'Save password';
+    }
+  };
+  return h('div', { class: 'login-page' },
+    h('form', { class: 'login-card', onsubmit: submit },
+      h('div', { class: 'login-logo' }, 'N'),
+      h('h1', {}, 'Choose your password'),
+      h('p', { class: 'muted center' }, Auth.current().email),
+      h('label', { class: 'field' }, h('span', {}, `New password (min ${LIMITS.password})`), inp('next')),
+      h('label', { class: 'field' }, h('span', {}, 'Confirm new password'), inp('confirm')),
+      err, btn,
+      h('p', { class: 'center mt' }, h('button', { type: 'button', class: 'link', onclick: () => act(async () => { await Auth.logout(); render(); }) }, 'Cancel and sign out'))));
+}
+
+/* After sign-in: reads the user's role + allowed profiles, then the profiles.
+   If the network fails but this user loaded before, the saved copy is used. */
 function viewSyncing() {
   const uid = Auth.current().id;
   if (!S.syncing && !S.syncError) {
     S.syncing = true;
-    Store.syncProfiles()
+    (async () => {
+      await Auth.loadAccess();
+      await Store.syncProfiles();
+      if (!Store.profiles().length) throw new AppError('E-AUTH-13');
+      Store.db.meta.lastAccess = { userId: uid, ...Auth.access };
+      await Store.save();
+    })()
       .then(() => { S.synced = uid; })
       .catch(e => {
-        if (Store.db.meta.profilesSyncedAt && Store.profiles().length) {
-          S.synced = uid; setTimeout(() => toast('Could not reach the server. Showing the profiles saved on this computer.', 'error'), 0);
+        const cached = Store.db.meta.lastAccess;
+        const offline = e instanceof AppError && e.code === 'E-NET-01';
+        if (offline && cached && cached.userId === uid && Store.profiles().length) {
+          Auth.access = { role: cached.role, profileIds: cached.profileIds, active: cached.active };
+          S.synced = uid;
+          setTimeout(() => toast('Could not reach the server. Showing the data saved on this computer.', 'error'), 0);
         } else {
           S.syncError = e instanceof AppError ? e.message : msg('E-SYS-01');
         }
@@ -193,7 +262,7 @@ function sidebar() {
       h('button', { class: 'profile-btn' + (p.id === biz() ? ' on' : ''), style: `--pc:${p.color}`,
         onclick: () => act(async () => { Store.db.meta.lastBusinessId = p.id; S.dist = { adId: '', selected: new Set(), q: '' }; await Store.save(); S.navOpen = false; render(); }) },
         h('span', { class: 'dot' }), h('span', { class: 'grow' }, p.short), h('span', { class: 'ptag-sm' }, p.tag)))),
-    h('button', { class: 'side-link', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add / manage profiles'),
+    Auth.isAdmin() ? h('button', { class: 'side-link', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add / manage profiles') : null,
 
     h('div', { class: 'side-section' }, 'Menu'),
     h('nav', {}, NAV.map(([v, label, icon]) =>
@@ -223,7 +292,8 @@ function topbar() {
 function render() {
   const app = $('#app');
   if (!Auth.current()) { S.synced = null; document.documentElement.style.setProperty('--biz', '#13213f'); app.replaceChildren(viewLogin()); return; }
-  if (S.synced !== Auth.current().id) { app.replaceChildren(viewSyncing()); return; }
+  if (Auth.needsPassword) { document.documentElement.style.setProperty('--biz', '#13213f'); app.replaceChildren(viewSetPassword()); return; }
+  if (S.synced !== Auth.current().id) { document.documentElement.style.setProperty('--biz', '#13213f'); app.replaceChildren(viewSyncing()); return; }
   document.documentElement.style.setProperty('--biz', B().color);
   app.replaceChildren(h('div', { class: 'shell' },
     sidebar(),
@@ -266,7 +336,7 @@ function viewDashboard() {
 
   const last = Store.db.meta.lastBackupAt;
   const days = last ? Math.floor((Date.now() - new Date(last)) / 864e5) : null;
-  if (last == null || days >= Store.db.settings.backupReminderDays) {
+  if (Auth.isAdmin() && (last == null || days >= Store.db.settings.backupReminderDays)) {
     banners.push(h('div', { class: 'banner warn' },
       h('div', {}, last == null ? 'No backup has been made yet.' : msg('I-BAK-01', { days })),
       h('button', { class: 'btn sm', onclick: doBackup }, 'Back up now')));
@@ -288,14 +358,14 @@ function viewDashboard() {
     h('div', { class: 'two' },
       card(h('div', { class: 'row between mb' }, h('h3', {}, 'Recent campaigns'), h('button', { class: 'link', onclick: () => go('history') }, 'View all ›')),
         camps.length ? campaignTable(camps.slice(0, 5)) : h('div', { class: 'empty' }, 'No campaigns yet.')),
-      card(h('h3', {}, 'All profiles'),
+      card(h('h3', {}, Auth.isAdmin() ? 'All profiles' : 'Your profiles'),
         h('div', { class: 'list' }, Store.profiles().map(p => {
           const n = Object.values(Store.db.groups).filter(g => g.businessId === p.id).length;
           const a = Object.values(Store.db.ads).filter(x => x.businessId === p.id).length;
           return h('div', { class: 'list-row' + (p.id === biz() ? ' hl' : '') }, profileTag(p),
             h('div', { class: 'grow' }, h('div', { class: 'b' }, p.short), h('div', { class: 'muted small' }, `${n} groups · ${a} ads`)));
         })),
-        h('button', { class: 'link mt', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add a profile'))),
+        Auth.isAdmin() ? h('button', { class: 'link mt', onclick: () => go('settings', { tab: 'profiles' }) }, '+ Add a profile') : null)),
     h('p', { class: 'muted small center' }, 'The application only opens group pages. You always share and post yourself.'));
 }
 
@@ -749,11 +819,13 @@ function viewCampaign() {
    8. Settings  (FR-041..043) — Profiles, Users, Lists, Backup
    ===================================================================== */
 function viewSettings() {
-  const tab = S.params.tab || 'profiles';
-  const tabs = [['profiles', 'Profiles'], ['account', 'My account'], ['lists', 'Lists & posting gap'], ['backup', 'Backup & data']];
-  const body = { profiles: settingsProfiles, account: settingsAccount, lists: settingsLists, backup: settingsBackup }[tab]();
+  const tabs = Auth.isAdmin()
+    ? [['profiles', 'Profiles'], ['users', 'Users'], ['account', 'My account'], ['lists', 'Lists & posting gap'], ['backup', 'Backup & data']]
+    : [['account', 'My account']];
+  const tab = tabs.some(([k]) => k === S.params.tab) ? S.params.tab : tabs[0][0];
+  const body = { profiles: settingsProfiles, users: settingsUsers, account: settingsAccount, lists: settingsLists, backup: settingsBackup }[tab]();
   return h('div', {},
-    pageTitle('Settings', 'Applies to all profiles'),
+    pageTitle('Settings', Auth.isAdmin() ? 'Applies to all profiles' : 'Your account'),
     h('div', { class: 'seg' }, tabs.map(([k, t]) => h('button', { class: 'seg-btn' + (k === tab ? ' on' : ''), onclick: () => go('settings', { tab: k }) }, t))),
     body);
 }
@@ -823,6 +895,114 @@ function profileForm(p) {
   state.check();
 }
 
+/* --- Users (Admin only, Step 6B) ---
+   Calls the "admin-users" server function. Members never see this tab. */
+async function callAdmin(body) {
+  const { data, error } = await DB.client.functions.invoke('admin-users', { body });
+  if (error) {
+    let m = '';
+    try { m = (await error.context.json()).error; } catch { /* not JSON */ }
+    if (!m && /fetch|network/i.test(error.message || '')) throw new AppError('E-NET-01');
+    throw new AppError('E-USR-01', { m: m || 'The user service is not available yet. (Server function "admin-users" not deployed?)' });
+  }
+  if (data && data.error) throw new AppError('E-USR-01', { m: data.error });
+  return data;
+}
+
+function settingsUsers() {
+  const box = h('div', {}, h('p', { class: 'muted' }, 'Loading users…'));
+  callAdmin({ action: 'list' })
+    .then(d => { S.users = d.users; box.replaceChildren(usersTable(d.users)); })
+    .catch(e => box.replaceChildren(h('p', { class: 'err' }, e instanceof AppError ? e.message : msg('E-SYS-01'))));
+  return card(
+    h('div', { class: 'row between mb' }, h('div', {}, h('h3', { style: 'margin:0' }, 'Users'),
+      h('div', { class: 'muted small' }, 'Admins see every profile. Members see only the profiles you give them, and cannot manage users, profiles, settings or backups.')),
+      h('button', { class: 'btn primary', onclick: () => userForm() }, '+ Invite user')),
+    box);
+}
+
+function usersTable(users) {
+  const me = Auth.current();
+  const tags = ids => ids.length
+    ? h('span', { class: 'row gap wrap' }, ids.map(id => profileTag(Store.profile(String(id)))))
+    : h('span', { class: 'muted small' }, '—');
+  return h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Email'), h('th', {}, 'Role'), h('th', {}, 'Profiles'),
+      h('th', {}, 'Status'), h('th', {}, 'Last sign-in'), h('th', {}))),
+    h('tbody', {}, users.map(u => {
+      const self = u.user_id === me.id;
+      const run = (fn, done) => act(async () => { await fn(); toast(done); render(); });
+      return h('tr', {},
+        h('td', { class: 'b' }, u.name || '—', self ? h('span', { class: 'muted small' }, ' (you)') : null),
+        h('td', { class: 'small' }, u.email),
+        h('td', {}, u.role === 'ADMIN' ? 'Admin' : 'Member'),
+        h('td', {}, u.role === 'ADMIN' ? h('span', { class: 'muted small' }, 'All profiles') : tags(u.profile_ids || [])),
+        h('td', {}, badge(u.status)),
+        h('td', { class: 'small' }, fmtDateTime(u.last_sign_in_at)),
+        h('td', { class: 'right nowrap' },
+          h('button', { class: 'btn sm', onclick: () => userForm(u) }, 'Edit'), ' ',
+          self ? null : h('span', {},
+            u.status !== 'BLOCKED' ? h('button', { class: 'btn sm', title: u.status === 'INVITED' ? 'Send the invitation again' : 'Send a "set new password" email',
+              onclick: () => run(() => callAdmin({ action: 'resend', user_id: u.user_id }), `Email sent to ${u.email}.`) }, u.status === 'INVITED' ? 'Resend invite' : 'Reset password') : null, ' ',
+            h('button', { class: 'btn sm', onclick: async () => {
+              const block = u.status !== 'BLOCKED';
+              if (block && !await confirmBox(`Block ${u.name || u.email}? They will not be able to sign in or see any data.`, 'Block', true)) return;
+              run(() => callAdmin({ action: 'set_active', user_id: u.user_id, active: !block }), block ? 'User blocked.' : 'User unblocked.');
+            } }, u.status === 'BLOCKED' ? 'Unblock' : 'Block'), ' ',
+            h('button', { class: 'btn sm danger-ghost', onclick: async () => {
+              if (!await confirmBox(`Delete ${u.name || u.email}? Their login is removed. Data they created stays.`, 'Delete', true)) return;
+              run(() => callAdmin({ action: 'delete', user_id: u.user_id }), 'User deleted.');
+            } }, 'Delete'))));
+    }))));
+}
+
+/* Invite (no u) or edit (u) a user. */
+function userForm(u) {
+  const edit = !!u;
+  const self = edit && u.user_id === Auth.current().id;
+  const v = { name: edit ? u.name : '', email: edit ? u.email : '', role: edit ? u.role : 'MEMBER',
+              profile_ids: new Set(edit ? (u.profile_ids || []).map(String) : []) };
+  const err = h('div', { class: 'err' });
+  const profBox = h('div', { class: 'field' }, h('span', {}, 'Profiles this member can use *'),
+    h('div', { class: 'list' }, Store.profiles().map(p => h('label', { class: 'row gap' },
+      h('input', { type: 'checkbox', checked: v.profile_ids.has(p.id), onchange: e => { e.target.checked ? v.profile_ids.add(p.id) : v.profile_ids.delete(p.id); err.textContent = ''; } }),
+      profileTag(p), h('span', {}, p.name)))));
+  const showProfiles = () => { profBox.style.display = v.role === 'ADMIN' ? 'none' : ''; };
+  const roleSel = h('select', { disabled: self, onchange: e => { v.role = e.target.value; showProfiles(); err.textContent = ''; } },
+    h('option', { value: 'MEMBER', selected: v.role === 'MEMBER' }, 'Member — only the profiles ticked below'),
+    h('option', { value: 'ADMIN', selected: v.role === 'ADMIN' }, 'Admin — everything, incl. users and backups'));
+  showProfiles();
+
+  const saveBtn = h('button', { class: 'btn primary' }, edit ? 'Save' : 'Send invitation');
+  const body = h('div', {},
+    h('label', { class: 'field' }, h('span', {}, 'Name *'), h('input', { value: v.name, maxlength: 80, oninput: e => { v.name = e.target.value; err.textContent = ''; } })),
+    h('label', { class: 'field' }, h('span', {}, 'Email *'),
+      h('input', { type: 'email', value: v.email, disabled: edit, oninput: e => { v.email = e.target.value; err.textContent = ''; } }),
+      edit ? null : h('div', { class: 'muted small' }, 'They get an email with a link to choose their own password.')),
+    h('label', { class: 'field' }, h('span', {}, 'Role *'), roleSel,
+      self ? h('div', { class: 'muted small' }, 'You cannot change your own role.') : null),
+    profBox, err);
+
+  saveBtn.onclick = async () => {
+    const pids = [...v.profile_ids].map(Number);
+    if (!v.name.trim()) { err.textContent = 'Please enter a name.'; return; }
+    if (v.role === 'MEMBER' && !pids.length) { err.textContent = 'Tick at least one profile for a member.'; return; }
+    saveBtn.disabled = true; saveBtn.textContent = edit ? 'Saving…' : 'Sending…';
+    try {
+      if (edit) await callAdmin({ action: 'update', user_id: u.user_id, name: v.name, role: self ? undefined : v.role, profile_ids: pids });
+      else await callAdmin({ action: 'invite', email: v.email, name: v.name, role: v.role, profile_ids: pids });
+      m.close();
+      toast(edit ? 'User updated.' : `Invitation sent to ${v.email.trim()}.`);
+      render();
+    } catch (e) {
+      err.textContent = e instanceof AppError ? e.message : msg('E-SYS-01');
+      saveBtn.disabled = false; saveBtn.textContent = edit ? 'Save' : 'Send invitation';
+    }
+  };
+  const m = modal(edit ? `Edit user · ${u.email}` : 'Invite user', body,
+    [h('span', { class: 'grow' }), h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'), saveBtn]);
+}
+
 /* --- My account (Supabase Auth) --- */
 function settingsAccount() {
   const me = Auth.current();
@@ -833,7 +1013,9 @@ function settingsAccount() {
       h('tr', {}, h('td', { class: 'b' }, 'Name'), h('td', {}, me.name), h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: changeNameForm }, 'Change name'))),
       h('tr', {}, h('td', { class: 'b' }, 'Email'), h('td', {}, me.email), h('td', {})),
       h('tr', {}, h('td', { class: 'b' }, 'Password'), h('td', {}, '••••••••'), h('td', { class: 'right' }, h('button', { class: 'btn sm', onclick: changePasswordForm }, 'Change password')))))),
-    h('p', { class: 'muted small mt' }, 'To add or remove users, or to reset a forgotten password: Supabase dashboard → Authentication → Users.'));
+    h('p', { class: 'muted small mt' }, Auth.isAdmin()
+      ? 'Manage other people in Settings → Users.'
+      : `Role: Member · Profiles: ${Store.profiles().map(p => p.short).join(', ')}. Ask the admin for access to other profiles.`));
 }
 
 function simpleForm(title, fields, onSave, saveLabel = 'Save') {
@@ -936,7 +1118,9 @@ async function resetData(withDemo) {
 (async () => {
   await Store.load();
   // Re-draw when the user signs in or out (also when a session expires).
-  await Auth.init(() => { if (!document.querySelector('.modal-wrap')) render(); });
+  S.linkError = DB.linkError ? 'This email link is invalid or has expired. Use "Forgot password?" or ask the admin to send a new one.' : '';
+  // Run render outside Supabase's auth callback (calling Supabase inside it can deadlock).
+  await Auth.init(() => setTimeout(() => { if (!document.querySelector('.modal-wrap')) render(); }, 0));
   render();
   Updates.start(() => { if (!document.querySelector('.modal-wrap')) render(); });
   // Keep the page in sync if data is changed in another tab.

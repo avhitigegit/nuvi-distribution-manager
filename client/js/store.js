@@ -1,6 +1,6 @@
 /* =====================================================================
    store.js — constants, messages, validation, CSV, storage, login
-   NUVI Social Media Advertisement Distribution Manager (v0.5.1)
+   NUVI Social Media Advertisement Distribution Manager (v0.6)
 
    Works in two modes:
      • Chrome extension  -> chrome.storage.local
@@ -28,13 +28,15 @@ const STATUS = {
   COMPLETED:         { label: 'Completed',         color: '#2563eb' },
   ARCHIVED:          { label: 'Archived',          color: '#64748b' },
   PAUSED:            { label: 'Paused',            color: '#d97706' },
-  STOPPED:           { label: 'Stopped',           color: '#b91c1c' }
+  STOPPED:           { label: 'Stopped',           color: '#b91c1c' },
+  INVITED:           { label: 'Invited',           color: '#d97706' },
+  BLOCKED:           { label: 'Blocked',           color: '#b91c1c' }
 };
 
 const ITEM_STATUSES  = ['PENDING', 'IN_PROGRESS', 'PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const FINAL_STATUSES = ['PUBLISHED', 'SKIPPED', 'APPROVAL_REQUIRED', 'FAILED'];
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.6.0';
 const LIMITS = { groupName: 150, adName: 120, notes: 500, description: 500, reason: 200,
                  csvRows: 1000, groupsPerBusiness: 1000, profileName: 80, profileShort: 30, password: 6 };
 
@@ -84,6 +86,10 @@ const MESSAGES = {
   'E-AUTH-07': 'The new password must be different from the current one.',
   'E-AUTH-08': 'Enter your email and password.',
   'E-AUTH-09': 'Your login has expired. Please log out and sign in again.',
+  'E-AUTH-10': 'Your account is not active. Please contact the admin.',
+  'E-AUTH-11': 'Please enter a valid email address.',
+  'E-AUTH-12': 'Too many emails were sent. Please wait a few minutes and try again.',
+  'E-USR-01': '{m}',
   'E-NET-01': 'Cannot reach the server. Check your internet connection and try again.',
   'E-NET-02': 'The app is not connected to Supabase. Check js/config.js.',
   'E-SYS-01': 'Something went wrong. Please try again.',
@@ -350,7 +356,7 @@ const Store = {
     for (const b of local) {
       const key = x => (x || '').trim().toLowerCase();
       let r = rows.find(r => key(r.tag) === key(b.tag)) || rows.find(r => key(r.short_name) === key(b.short));
-      if (!r && this.profileHasData(b.id)) {
+      if (!r && this.profileHasData(b.id) && Auth.isAdmin()) {
         const { data, error } = await DB.client.from('profiles')
           .insert({ ...this._row(b, this.db.settings.adTypes[b.id]), sort_order: rows.length + 1 }).select().single();
         if (error) this._dbFail(error);
@@ -515,6 +521,8 @@ const Store = {
    Auth.current() is synchronous: it returns the cached user or null.   */
 const Auth = {
   user: null,
+  access: null,          // { role: 'ADMIN' | 'MEMBER', profileIds: ['1', ...], active }
+  needsPassword: false,  // arrived from an invite / reset email: must choose a password
   _toUser(u) {
     if (!u) return null;
     const meta = u.user_metadata || {};
@@ -523,17 +531,52 @@ const Auth = {
   },
   async init(onChange) {
     if (!DB.client) return;
-    const { data } = await DB.client.auth.getSession();
-    this.user = this._toUser(data.session && data.session.user);
+    if (DB.linkType === 'invite' || DB.linkType === 'recovery') this.needsPassword = true;
     DB.client.auth.onAuthStateChange((event, session) => {
       const before = this.user && this.user.id;
       this.user = this._toUser(session && session.user);
-      if ((this.user && this.user.id) !== before && onChange) onChange(event);
+      if (!this.user) this.access = null;
+      if (event === 'PASSWORD_RECOVERY') this.needsPassword = true;
+      if (((this.user && this.user.id) !== before || event === 'PASSWORD_RECOVERY') && onChange) onChange(event);
     });
+    const { data } = await DB.client.auth.getSession();
+    this.user = this._toUser(data.session && data.session.user);
+    if (!this.user) this.needsPassword = false;
     // Local accounts from the prototype are no longer used: remove their hashes.
     if (Store.db.users && Object.keys(Store.db.users).length) { Store.db.users = {}; await Store.save(); }
   },
   current() { return this.user; },
+  isAdmin() { return !!(this.access && this.access.active && this.access.role === 'ADMIN'); },
+  /* Reads this user's role and allowed profiles (table app_users). */
+  async loadAccess() {
+    const { data, error } = await DB.client.from('app_users').select('role, profile_ids, active, name').eq('user_id', this.user.id).maybeSingle();
+    if (error) Store._dbFail(error);
+    if (!data || !data.active) { this.access = null; throw new AppError('E-AUTH-10'); }
+    this.access = { role: data.role, profileIds: (data.profile_ids || []).map(String), active: data.active };
+    return this.access;
+  },
+  async forgotPassword(email) {
+    email = (email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError('E-AUTH-11');
+    if (!DB.siteUrl) throw new AppError('E-NET-02');
+    const { error } = await DB.client.auth.resetPasswordForEmail(email, { redirectTo: DB.siteUrl });
+    if (error) {
+      if ((error.message || '').toLowerCase().includes('rate limit')) throw new AppError('E-AUTH-12');
+      this._fail(error);
+    }
+  },
+  /* After an invite / reset link: choose a password (no current password needed). */
+  async setPassword(next, confirm) {
+    if ((next || '').length < LIMITS.password) throw new AppError('E-AUTH-02', { max: LIMITS.password });
+    if (next !== confirm) throw new AppError('E-AUTH-03');
+    const { error } = await DB.client.auth.updateUser({ password: next });
+    if (error) {
+      if ((error.message || '').toLowerCase().includes('different')) throw new AppError('E-AUTH-07');
+      this._fail(error);
+    }
+    this.needsPassword = false;
+    if (DB.isWeb) history.replaceState(null, '', location.pathname + location.search);
+  },
   _fail(error) {
     const m = (error && error.message || '').toLowerCase();
     if (m.includes('invalid login') || m.includes('invalid credentials')) throw new AppError('E-AUTH-01');
@@ -552,7 +595,7 @@ const Auth = {
   },
   async logout() {
     if (DB.client) await DB.client.auth.signOut({ scope: 'local' });
-    this.user = null;
+    this.user = null; this.access = null; this.needsPassword = false;
   },
   async changePassword(current, next, confirm) {
     if ((next || '').length < LIMITS.password) throw new AppError('E-AUTH-02', { max: LIMITS.password });
